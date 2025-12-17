@@ -28,8 +28,9 @@
         <div v-if="isLoggedIn" class="profile">
           <h3>个人信息</h3>
           <el-card>
-            <p>昵称：Demo 用户</p>
-            <p>角色：用户</p>
+            <p>昵称：{{ user?.username || user?.account || '用户' }}</p>
+            <p>角色：{{ roleName }}</p>
+            <el-button type="danger" size="small" @click="logout">退出登录</el-button>
           </el-card>
         </div>
         <div v-else class="auth-actions">
@@ -49,9 +50,49 @@
 </template>
 
 <script setup lang="ts" name="Body">
-import { ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
-const isLoggedIn = ref(localStorage.getItem('isLoggedIn') === '1')
+const isLoggedIn = ref(false)
+const user = ref<any>(null)
+try {
+  const raw = localStorage.getItem('user')
+  user.value = raw ? JSON.parse(raw) : null
+} catch {
+  user.value = null
+}
+const roleName = computed(() => {
+  const r = user.value?.role
+  if (r === 1) return '商家'
+  if (r === 2) return '管理员'
+  return '用户'
+})
+const logout = () => {
+  localStorage.removeItem('user_isLoggedIn')
+  localStorage.removeItem('user_user')
+  isLoggedIn.value = false
+  user.value = null
+  window.dispatchEvent(new Event('userstatechange'))
+}
+
+const updateState = () => {
+  const token = localStorage.getItem('user_isLoggedIn') === '1'
+  try {
+    const raw = localStorage.getItem('user_user')
+    user.value = raw ? JSON.parse(raw) : null
+  } catch {
+    user.value = null
+  }
+  const roleOk = (user.value?.role === 0)
+  isLoggedIn.value = token && roleOk
+}
+
+onMounted(() => {
+  window.addEventListener('userstatechange', updateState)
+  updateState()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('userstatechange', updateState)
+})
 
 const hotProducts = ref(
   Array.from({ length: 10 }).map((_, i) => ({
