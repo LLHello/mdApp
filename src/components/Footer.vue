@@ -2,20 +2,20 @@
   <footer class="footer">
     <section class="categories-block">
       <ul class="category-list">
-        <li v-for="c in categories" :key="c">
+        <li v-for="c in categories" :key="c.id">
           <button
             class="category-chip"
-            :class="{ active: c === activeCategory }"
-            @click="selectCategory(c)"
+            :class="{ active: c.id === activeCategory }"
+            @click="selectCategory(c.id)"
           >
-            {{ c }}
+            {{ c.name }}
           </button>
         </li>
       </ul>
       <div class="category-content" v-if="activeCategory">
         <div class="product-grid">
           <router-link
-            v-for="item in categoryContent[activeCategory]"
+            v-for="item in categoryContent[activeCategory] || []"
             :key="item.id"
             :to="`/product/${item.id}`"
             class="product-card"
@@ -26,6 +26,12 @@
               <div class="product-price">￥{{ item.price.toFixed(2) }}</div>
             </div>
           </router-link>
+          <div
+            v-if="!categoryContent[activeCategory]?.length"
+            class="empty-tip"
+          >
+            暂无商品
+          </div>
         </div>
       </div>
     </section>
@@ -34,33 +40,107 @@
 </template>
 
 <script setup lang="ts" name="Footer">
-import { ref } from 'vue'
+import { ref, onMounted } from "vue";
+import request from "@/utils/request";
 
-const categories = ref<string[]>([
-  '电子产品',
-  '服饰',
-  '美妆',
-  '家电',
-  '图书',
-  '运动户外',
-  '母婴',
-  '食品',
-  '宠物',
-  '其他'
-])
-const activeCategory = ref<string>('电子产品')
-const categoryContent: Record<string, { id: number; title: string; price: number; image: string }[]> = {}
-categories.value.forEach((c, i) => {
-  categoryContent[c] = Array.from({ length: 8 }).map((_, j) => ({
-    id: i * 100 + j,
-    title: `${c} 示例商品 ${j + 1}`,
-    price: Math.round((Math.random() * 900 + 100) * 100) / 100,
-    image: '/carouseImg/' + (((j % 4) + 1)) + '.jpg'
-  }))
-})
-const selectCategory = (c: string) => {
-  activeCategory.value = c
-}
+const categories = ref<{ id: number; name: string }[]>([]);
+const activeCategory = ref<number>(0);
+const categoryContent = ref<
+  Record<number, { id: number; title: string; price: number; image: string }[]>
+>({});
+
+const fetchCategories = async () => {
+  try {
+    const res: any = await request.get("goods/categoryList");
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok && Array.isArray(res?.data)) {
+      categories.value = res.data.map((c: any) => ({
+        id: Number(c.id),
+        name: String(c.name),
+      }));
+
+      if (categories.value.length > 0) {
+        // 默认选中第一个分类并获取商品
+        const first = categories.value[0];
+        if (first && first.id) {
+          activeCategory.value = first.id;
+          fetchGoods(first.id);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Fetch categories failed", e);
+  }
+};
+
+const baseURL = request?.defaults?.baseURL || "";
+const normalizeAvatar = (p: string) => {
+  if (!p) return "";
+  let s = String(p).trim().replace(/\\/g, "/");
+  if (s.startsWith("http") || s.startsWith("data:")) return s;
+  const uploadIdx = s.toLowerCase().lastIndexOf("/upload/");
+  if (uploadIdx >= 0) {
+    s = s.slice(uploadIdx);
+  }
+  if (!/\/upload\//i.test(s) && !/\/carouseImg\//i.test(s)) {
+    const parts = s.split("/");
+    const filename = parts[parts.length - 1];
+    s = "/upload/" + filename;
+  }
+  const b = baseURL?.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
+  s = s.startsWith("/") ? s : "/" + s;
+  const url = b + s;
+  return url.replace(/([^:])\/{2,}/g, "$1/");
+};
+
+const fetchGoods = async (categoryId: number) => {
+  try {
+    const res: any = await request.get(`goods/categoryId/${categoryId}`);
+    const ok = res?.code === 200 || res?.success === true;
+
+    if (ok && Array.isArray(res?.data)) {
+      categoryContent.value[categoryId] = res.data.map((item: any) => {
+        // 处理图片，后端返回的是 List<String>
+        let imgUrl = "";
+        if (Array.isArray(item.pic) && item.pic.length > 0) {
+          imgUrl = item.pic[0];
+        } else if (typeof item.pic === "string") {
+          // 如果后端返回的是逗号分隔的字符串，只取第一张
+          const parts = item.pic.split(",").filter(Boolean);
+          if (parts.length > 0) {
+            imgUrl = parts[0];
+          }
+        }
+
+        // 规范化图片路径
+        imgUrl = normalizeAvatar(imgUrl);
+        // 默认图
+        if (!imgUrl) imgUrl = "/carouseImg/1.jpg";
+
+        return {
+          id: item.id,
+          title: item.title,
+          price: Number(item.price) || 0,
+          image: imgUrl,
+        };
+      });
+    } else {
+      categoryContent.value[categoryId] = [];
+    }
+  } catch (e) {
+    console.error(`Fetch goods for category ${categoryId} failed`, e);
+    categoryContent.value[categoryId] = [];
+  }
+};
+
+const selectCategory = (id: number) => {
+  activeCategory.value = id;
+  fetchGoods(id);
+};
+
+onMounted(() => {
+  fetchCategories();
+});
 </script>
 
 <style scoped>
@@ -91,7 +171,8 @@ const selectCategory = (c: string) => {
   background: #fafafa;
   color: #606266;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
   outline: none;
 }
 .category-chip:focus,
@@ -127,11 +208,12 @@ const selectCategory = (c: string) => {
   border-radius: 8px;
   overflow: hidden;
   text-decoration: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 .product-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
   border-color: #e7e7e7;
 }
 .product-card img {

@@ -28,9 +28,11 @@
         <div v-if="isLoggedIn" class="profile">
           <h3>个人信息</h3>
           <el-card>
-            <p>昵称：{{ user?.username || user?.account || '用户' }}</p>
+            <p>昵称：{{ user?.username || user?.account || "用户" }}</p>
             <p>角色：{{ roleName }}</p>
-            <el-button type="danger" size="small" @click="logout">退出登录</el-button>
+            <el-button type="danger" size="small" @click="logout"
+              >退出登录</el-button
+            >
           </el-card>
         </div>
         <div v-else class="auth-actions">
@@ -50,63 +52,82 @@
 </template>
 
 <script setup lang="ts" name="Body">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import request from "@/utils/request";
 
-const isLoggedIn = ref(false)
-const user = ref<any>(null)
+const isLoggedIn = ref(false);
+const user = ref<any>(null);
 try {
-  const raw = localStorage.getItem('user')
-  user.value = raw ? JSON.parse(raw) : null
+  const raw = sessionStorage.getItem("user");
+  user.value = raw ? JSON.parse(raw) : null;
 } catch {
-  user.value = null
+  user.value = null;
 }
 const roleName = computed(() => {
-  const r = user.value?.role
-  if (r === 1) return '商家'
-  if (r === 2) return '管理员'
-  return '用户'
-})
+  const r = user.value?.role;
+  if (r === 1) return "商家";
+  if (r === 2) return "管理员";
+  return "用户";
+});
 const logout = () => {
-  localStorage.removeItem('user_isLoggedIn')
-  localStorage.removeItem('user_user')
-  isLoggedIn.value = false
-  user.value = null
-  window.dispatchEvent(new Event('userstatechange'))
-}
+  sessionStorage.removeItem("user_isLoggedIn");
+  sessionStorage.removeItem("user_user");
+  sessionStorage.removeItem("user_token");
+  sessionStorage.removeItem("token");
+  isLoggedIn.value = false;
+  user.value = null;
+  window.dispatchEvent(new Event("userstatechange"));
+};
 
 const updateState = () => {
-  const token = localStorage.getItem('user_isLoggedIn') === '1'
+  const token = sessionStorage.getItem("user_isLoggedIn") === "1";
   try {
-    const raw = localStorage.getItem('user_user')
-    user.value = raw ? JSON.parse(raw) : null
+    const raw = sessionStorage.getItem("user_user");
+    user.value = raw ? JSON.parse(raw) : null;
   } catch {
-    user.value = null
+    user.value = null;
   }
-  const roleOk = (user.value?.role === 0)
-  isLoggedIn.value = token && roleOk
-}
+  const roleOk = user.value?.role === 0;
+  isLoggedIn.value = token && roleOk;
+};
+
+const hotProducts = ref<Array<{ id: number; title: string }>>([]);
+
+const fetchHotProducts = async () => {
+  try {
+    const res = await request.get("goods/categoryList");
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok && Array.isArray(res?.data)) {
+      hotProducts.value = res.data.slice(0, 10).map((c: any) => ({
+        id: Number(c.id),
+        title: String(c.name),
+      }));
+      return;
+    }
+  } catch {}
+  // Fallback data
+  hotProducts.value = Array.from({ length: 10 }).map((_, i) => ({
+    id: i + 1,
+    title: `热门商品 ${i + 1}`,
+  }));
+};
 
 onMounted(() => {
-  window.addEventListener('userstatechange', updateState)
-  updateState()
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('userstatechange', updateState)
-})
+  window.addEventListener("userstatechange", updateState);
+  updateState();
+  fetchHotProducts();
+});
 
-const hotProducts = ref(
-  Array.from({ length: 10 }).map((_, i) => ({
-    id: i + 1,
-    title: `热门商品 ${i + 1}`
-  }))
-)
+onBeforeUnmount(() => {
+  window.removeEventListener("userstatechange", updateState);
+});
 
 const carouselImages = ref<string[]>([
-  '/carouseImg/1.jpg',
-  '/carouseImg/2.jpg',
-  '/carouseImg/3.jpg',
-  '/carouseImg/4.jpg'
-])
+  "/carouseImg/1.jpg",
+  "/carouseImg/2.jpg",
+  "/carouseImg/3.jpg",
+  "/carouseImg/4.jpg",
+]);
 </script>
 
 <style scoped>
@@ -124,14 +145,17 @@ const carouselImages = ref<string[]>([
   gap: 16px;
   height: 100%;
 }
-.left, .center, .right {
+.left,
+.center,
+.right {
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 12px;
   box-sizing: border-box;
 }
-.left h3, .right h3 {
+.left h3,
+.right h3 {
   margin: 0 0 8px 0;
   color: #303133;
 }
@@ -156,7 +180,7 @@ const carouselImages = ref<string[]>([
   transform: translateY(-1px);
 }
 .rank-list li::after {
-  content: '';
+  content: "";
   width: 22px; /* mirror rank width to keep title centered */
 }
 .rank-list li:last-child {

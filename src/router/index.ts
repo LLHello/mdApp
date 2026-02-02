@@ -96,7 +96,7 @@ router.beforeEach((to, from, next) => {
     // Determine expected role for this route; default user when not specified
     const expectedRole = requiredRoles && requiredRoles.length ? requiredRoles[0] : 0
     const prefix = rolePrefix(expectedRole)
-    const isLoggedForRole = localStorage.getItem(`${prefix}_isLoggedIn`) === '1'
+    const isLoggedForRole = sessionStorage.getItem(`${prefix}_isLoggedIn`) === '1'
     if (!isLoggedForRole) {
       ElMessage.warning('请先登录')
       next({ path: '/login' })
@@ -104,7 +104,7 @@ router.beforeEach((to, from, next) => {
     }
     // Verify stored user role matches expected role
     try {
-      const raw = localStorage.getItem(`${prefix}_user`)
+      const raw = sessionStorage.getItem(`${prefix}_user`)
       const u = raw ? JSON.parse(raw) : null
       const currentRole: number | undefined = u?.role
       if (currentRole !== expectedRole) {

@@ -39,14 +39,7 @@
     </div>
     <div class="right">
       <div class="mini-player">
-        <el-icon class="mp-logo" @click="goMusic"><Headset /></el-icon>
-        <button class="icon-btn" type="button" @click="prev"><el-icon><CaretLeft /></el-icon></button>
-        <button class="icon-btn" type="button" @click="togglePlay">
-          <el-icon v-if="!isPlaying"><VideoPlay /></el-icon>
-          <el-icon v-else><VideoPause /></el-icon>
-        </button>
-        <button class="icon-btn" type="button" @click="next"><el-icon><CaretRight /></el-icon></button>
-        <audio ref="audioEl" :src="currentSrc"></audio>
+        <el-icon class="mp-logo" @click="goCoupon"><Ticket /></el-icon>
       </div>
     </div>
   </header>
@@ -55,21 +48,12 @@
 <script setup lang="ts" name="Header">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Headset, CaretLeft, CaretRight, VideoPlay, VideoPause } from '@element-plus/icons-vue'
+import { Ticket } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const keyword = ref('')
 const historyVisible = ref(false)
 const histories = ref<string[]>([])
-const audioEl = ref<HTMLAudioElement | null>(null)
-const playlist = ref<string[]>([
-  '/music/1.mp3',
-  '/music/2.mp3',
-  '/music/3.mp3'
-])
-const index = ref(0)
-const isPlaying = ref(false)
-const currentSrc = ref(playlist.value[index.value] || '')
 
 const getHistory = (): string[] => {
   try {
@@ -120,35 +104,8 @@ const onSearch = () => {
   router.push({ path: '/search', query: { q } })
 }
 
-const playCurrent = async () => {
-  currentSrc.value = playlist.value[index.value] || ''
-  if (!audioEl.value) return
-  try {
-    await audioEl.value.play()
-    isPlaying.value = true
-  } catch {
-    isPlaying.value = false
-  }
-}
-const togglePlay = async () => {
-  if (!audioEl.value) return
-  if (isPlaying.value) {
-    audioEl.value.pause()
-    isPlaying.value = false
-  } else {
-    await playCurrent()
-  }
-}
-const next = async () => {
-  index.value = (index.value + 1) % playlist.value.length
-  await playCurrent()
-}
-const prev = async () => {
-  index.value = (index.value - 1 + playlist.value.length) % playlist.value.length
-  await playCurrent()
-}
-const goMusic = () => {
-  router.push('/music')
+const goCoupon = () => {
+  router.push('/coupon')
 }
 </script>
 
