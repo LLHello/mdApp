@@ -37,6 +37,13 @@
         </div>
         <div class="info-wrap">
           <h2 class="title">{{ product.title }}</h2>
+          <div class="meta">
+            <span class="clicks">点击量：{{ clickCount }}</span>
+          </div>
+          <div class="merchant" v-if="merchantName || merchantAvatar">
+            <img class="merchant-avatar" :src="merchantAvatar || '/vite.svg'" alt="商家头像" />
+            <span class="merchant-name">{{ merchantName || "商家" }}</span>
+          </div>
           <div class="price">￥{{ Number(product.price).toFixed(2) }}</div>
           <div class="desc-label">商品描述：</div>
           <div class="desc">{{ product.des || "暂无描述" }}</div>
@@ -51,7 +58,7 @@
 </template>
 
 <script setup lang="ts" name="ProductDetail">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import request from "@/utils/request";
 
@@ -61,6 +68,9 @@ const images = ref<string[]>([]);
 const activeIndex = ref(0);
 const initialIndex = ref(0);
 const carouselRef = ref<any>(null);
+const clickCount = ref<number>(0);
+const merchantName = ref<string>("");
+const merchantAvatar = ref<string>("");
 
 const baseURL = request?.defaults?.baseURL || "";
 const normalizeAvatar = (p: string) => {
@@ -86,13 +96,11 @@ const fetchProduct = async () => {
   const id = route.params.id;
   if (!id) return;
   try {
-    // 添加时间戳防止缓存
     const res: any = await request.get(`goods/good/${id}?t=${Date.now()}`);
     const ok = res?.code === 200 || res?.success === true;
     if (ok && res.data) {
       product.value = res.data;
 
-      // 处理图片
       let picList: string[] = [];
       if (res.data.pic) {
         if (Array.isArray(res.data.pic)) {
@@ -102,29 +110,84 @@ const fetchProduct = async () => {
         }
       }
       
-      // 过滤空值并去重
       picList = picList
         .map((p) => String(p).trim())
         .filter((p) => p && p !== "null" && p !== "undefined");
         
-      // 规范化图片路径
       images.value = picList.map((url) => normalizeAvatar(url));
 
       if (images.value.length === 0) {
-        // 默认图
         images.value = ["/carouseImg/1.jpg"];
       }
       
-      // 重置索引
       activeIndex.value = 0;
       initialIndex.value = 0;
       if (carouselRef.value) {
         carouselRef.value.setActiveItem(0);
       }
+      fetchClickCount(Number(id));
+      const mid =
+        res.data?.merchantId ??
+        res.data?.merchantID ??
+        res.data?.sellerId ??
+        res.data?.mid ??
+        null;
+      if (mid != null) {
+        fetchMerchant(Number(mid));
+      } else {
+        merchantName.value = "";
+        merchantAvatar.value = "";
+      }
     }
   } catch (e) {
     console.error("Fetch product detail failed", e);
   }
+};
+
+const fetchClickCount = async (id: number) => {
+  try {
+    const res: any = await request.get("goods/clickCount", {
+      params: { goodId: id },
+    });
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      if (typeof res?.data === "number") {
+        clickCount.value = res.data;
+        return;
+      }
+      const c =
+        res?.data?.count ??
+        res?.data?.clickCount ??
+        res?.data?.clicks ??
+        res?.count ??
+        res?.clickCount ??
+        res?.clicks;
+      if (c != null) {
+        clickCount.value = Number(c) || 0;
+        return;
+      }
+    }
+  } catch {}
+  clickCount.value = 0;
+};
+
+const pickName = (u: any) =>
+  u?.username ?? u?.account ?? u?.nickname ?? u?.name ?? "";
+const pickAvatar = (u: any) =>
+  u?.icon ?? u?.avatar ?? u?.pic ?? u?.photo ?? u?.image ?? u?.headUrl ?? "";
+const fetchMerchant = async (mid: number) => {
+  try {
+    const res: any = await request.get(`users/${mid}`);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok && res?.data) {
+      const u = res.data;
+      merchantName.value = String(pickName(u) || "");
+      merchantAvatar.value = normalizeAvatar(String(pickAvatar(u) || ""));
+      return;
+    }
+  } catch {}
+  merchantName.value = "";
+  merchantAvatar.value = "";
 };
 
 const onCarouselChange = (idx: number) => {
@@ -145,7 +208,9 @@ onMounted(() => {
 watch(
   () => route.params.id,
   (newId) => {
-    if (newId) fetchProduct();
+    if (newId) {
+      fetchProduct();
+    }
   }
 );
 </script>
@@ -217,6 +282,27 @@ watch(
   color: #303133;
   font-size: 22px;
   line-height: 1.4;
+}
+.meta {
+  margin-bottom: 8px;
+  color: #909399;
+  font-size: 13px;
+}
+.merchant {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.merchant-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #ebeef5;
+}
+.merchant-name {
+  color: #606266;
 }
 .info-wrap .price {
   color: #e1251b;

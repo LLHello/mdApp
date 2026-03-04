@@ -4,12 +4,19 @@
       <!-- 左：热门商品排行 -->
       <section class="left">
         <h3>热门商品排行</h3>
-        <ol class="rank-list">
-          <li v-for="(item, index) in hotProducts" :key="item.id">
+        <ol class="rank-list" v-if="hotProducts.length">
+          <li v-for="(item, index) in hotProducts" :key="`${item.id ?? 'n'}-${index}`">
             <span class="rank">{{ index + 1 }}</span>
-            <span class="title">{{ item.title }}</span>
+            <router-link
+              v-if="typeof item.id === 'number' && Number.isFinite(item.id)"
+              :to="`/product/${item.id}`"
+              class="title"
+              >{{ item.title }}</router-link
+            >
+            <span v-else class="title">{{ item.title }}</span>
           </li>
         </ol>
+        <el-empty v-else description="暂无数据" />
       </section>
 
       <!-- 中：轮播图 -->
@@ -91,23 +98,43 @@ const updateState = () => {
   isLoggedIn.value = token && roleOk;
 };
 
-const hotProducts = ref<Array<{ id: number; title: string }>>([]);
+const hotProducts = ref<Array<{ id: number | null; title: string }>>([]);
 
 const fetchHotProducts = async () => {
   try {
-    const res = await request.get("goods/categoryList");
+    const res: any = await request.get("goods/top15");
     const ok = res?.code === 200 || res?.success === true;
     if (ok && Array.isArray(res?.data)) {
-      hotProducts.value = res.data.slice(0, 10).map((c: any) => ({
-        id: Number(c.id),
-        title: String(c.name),
-      }));
+      const arr: Array<{ id: number | null; title: string }> = res.data
+        .slice(0, 10)
+        .map((x: any) => {
+          const id =
+            x?.id ?? x?.goodId ?? x?.goodsId ?? x?.productId ?? x?.gid ?? null;
+            const title =
+              x?.title ?? x?.name ?? x?.goodsName ?? x?.productName ?? "";
+          return {
+            id: id != null && !isNaN(Number(id)) ? Number(id) : null,
+            title: String(title || ""),
+          };
+        })
+        .filter((it: any) => it.title);
+      if (arr.length) hotProducts.value = arr;
+      else {
+        const names = res.data
+          .map((x: any) => x?.title ?? x?.name ?? x?.goodsName ?? x?.productName ?? "")
+          .map((s: any) => String(s || "").trim())
+          .filter((s: string) => s)
+          .slice(0, 15);
+        if (names.length) {
+          hotProducts.value = names.map((t: string) => ({ id: null, title: t }));
+        }
+      }
       return;
     }
   } catch {}
   // Fallback data
-  hotProducts.value = Array.from({ length: 10 }).map((_, i) => ({
-    id: i + 1,
+  hotProducts.value = Array.from({ length: 15 }).map((_, i) => ({
+    id: null,
     title: `热门商品 ${i + 1}`,
   }));
 };
@@ -132,7 +159,7 @@ const carouselImages = ref<string[]>([
 
 <style scoped>
 .body {
-  padding: 16px 24px;
+  padding: 16px clamp(16px, 3vw, 48px);
   height: 68vh;
   box-sizing: border-box;
   margin-top: 16px;
@@ -145,6 +172,9 @@ const carouselImages = ref<string[]>([
   gap: 16px;
   height: 100%;
 }
+.grid {
+  grid-auto-rows: minmax(0, auto);
+}
 .left,
 .center,
 .right {
@@ -153,6 +183,31 @@ const carouselImages = ref<string[]>([
   border-radius: 8px;
   padding: 12px;
   box-sizing: border-box;
+}
+.center {
+  padding: 0;
+  overflow: hidden;
+}
+.center :deep(.el-carousel) {
+  height: 100%;
+}
+.center :deep(.el-carousel__container) {
+  height: 100%;
+}
+.center :deep(.el-carousel__item) {
+  height: 100%;
+}
+.slide {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+}
+.slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .left h3,
 .right h3 {
@@ -201,30 +256,8 @@ const carouselImages = ref<string[]>([
   flex: 1;
   text-align: center;
 }
-.center {
-  padding: 0;
-  overflow: hidden;
-}
-.center :deep(.el-carousel) {
-  height: 100%;
-}
-.center :deep(.el-carousel__container) {
-  height: 100%;
-}
-.center :deep(.el-carousel__item) {
-  height: 100%;
-}
-.slide {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
-}
-.slide img {
+.profile :deep(.el-card) {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 .auth-actions {
   display: flex;
@@ -238,7 +271,17 @@ const carouselImages = ref<string[]>([
   display: flex;
   gap: 12px;
 }
-.profile :deep(.el-card) {
-  width: 100%;
+@media (max-width: 1200px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .body {
+    height: auto;
+  }
 }
 </style>

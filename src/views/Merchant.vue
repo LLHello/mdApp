@@ -64,6 +64,9 @@
                   />
                 </el-select>
               </el-form-item>
+              <el-form-item label="描述">
+                <el-input v-model="publishForm.des" type="textarea" rows="3" />
+              </el-form-item>
               <el-form-item label="图片">
                 <el-upload
                   action="#"
@@ -72,6 +75,7 @@
                   :on-change="onPublishPicChange"
                   accept="image/*"
                   list-type="picture-card"
+                  multiple
                 >
                   <el-button type="primary">选择图片</el-button>
                 </el-upload>
@@ -411,13 +415,16 @@ const publishForm = ref<{
   categoryId: number | null;
   pic: string[];
   isShow: number;
+  des: string;
 }>({
   title: "",
   price: "",
   categoryId: null,
   pic: [],
   isShow: 1,
+  des: "",
 });
+const publishUploadFiles = ref<File[]>([]);
 const products = ref<
   Array<{
     id: number;
@@ -494,7 +501,7 @@ const getUserId = () =>
 const profileForm = ref({
   id: getUserId(),
   username: displayName.value,
-  gender: 1,
+  gender: Number(user.value?.gender ?? 1),
   avatar: getAvatarPath(user.value) || "",
   des: user.value?.des || "",
 });
@@ -505,6 +512,39 @@ const profileAvatarUrl = computed(
 const pwdDialogVisible = ref(false);
 const pwdForm = ref({ oldPWD: "", newPWD: "", newPWD2: "" });
 const router = useRouter();
+
+const setStoredMerchantUser = (obj: any) => {
+  const s = JSON.stringify(obj);
+  sessionStorage.setItem("merchant_user", s);
+  localStorage.setItem("merchant_user", s);
+};
+const refreshMerchantFromServer = async () => {
+  const id = getUserId();
+  if (!id) return;
+  try {
+    const res: any = await request.get(`users/${id}`);
+    const ok = res?.code === 200 || res?.success === true;
+    let serverUser: any | null = null;
+    if (ok && res?.data) serverUser = res.data;
+    // 兼容后端直接返回用户对象而非 Result 包装
+    if (!serverUser && res && (res.id != null || res.username || res.account)) {
+      serverUser = res;
+    }
+    if (!serverUser) return;
+    const finalUser = { ...serverUser, id };
+    setStoredMerchantUser(finalUser);
+    user.value = finalUser;
+    profileForm.value.username =
+      finalUser.username ?? finalUser.account ?? profileForm.value.username;
+    profileForm.value.avatar = getAvatarPath(finalUser) || profileForm.value.avatar;
+    if (finalUser.gender != null) {
+      profileForm.value.gender = Number(finalUser.gender);
+    }
+    if (finalUser.des != null) {
+      profileForm.value.des = String(finalUser.des);
+    }
+  } catch {}
+};
 
 const fetchCategories = async () => {
   try {
@@ -526,45 +566,27 @@ const fetchCategories = async () => {
   ];
 };
 onMounted(fetchCategories);
+onMounted(refreshMerchantFromServer);
 
-const onPublishPicChange = async (file: any) => {
+const onPublishPicChange = (file: any) => {
   if (!file?.raw) return;
-
-  // 文件大小限制 (例如 5MB)
   if (file.size > 5 * 1024 * 1024) {
     ElMessage.error("图片大小不能超过 5MB");
     return;
   }
-
-  const form = new FormData();
-  form.append("id", String(getUserId()));
-  form.append("pic", file.raw);
-
-  try {
-    const res = await request.post("users/upload", form);
-    const ok = res?.code === 200 || res?.success === true;
-    if (!ok) {
-      ElMessage.error(res?.msg || "上传失败");
-      return;
-    }
-
-    // 获取后端返回的图片URL
-    let url =
-      typeof res?.data === "string"
-        ? res.data
-        : res?.data?.url ?? res?.data?.path ?? "";
-
-    if (url) {
-      url = normalizeAvatar(url);
-      publishForm.value.pic.push(url);
-      ElMessage.success("图片上传成功");
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || "上传出错");
-  }
+  const reader = new FileReader();
+  reader.readAsDataURL(file.raw);
+  reader.onload = (e) => {
+    const base64Url = e.target?.result as string;
+    publishForm.value.pic.push(base64Url);
+    publishUploadFiles.value.push(file.raw);
+  };
 };
 const removePublishPic = (idx: number) => {
   publishForm.value.pic.splice(idx, 1);
+  if (idx >= 0 && idx < publishUploadFiles.value.length) {
+    publishUploadFiles.value.splice(idx, 1);
+  }
 };
 const getRelativePath = (url: string) => {
   if (!url) return "";
@@ -576,23 +598,39 @@ const getRelativePath = (url: string) => {
 };
 
 const submitPublish = async () => {
-  const payload = {
-    merchantId: Number(user.value?.id ?? user.value?.userId ?? 0),
+  const merchantId = Number(user.value?.id ?? user.value?.userId ?? 0);
+  if (!merchantId) {
+    ElMessage.error("未登录或商家信息无效");
+    return;
+  }
+  if (!publishForm.value.title || !publishForm.value.price || !publishForm.value.categoryId) {
+    ElMessage.error("请完善商品名称、价格和分类");
+    return;
+  }
+  const goodsDTO = {
+    merchantId,
     categoryId: publishForm.value.categoryId,
     title: publishForm.value.title,
     price: publishForm.value.price,
-    pic: publishForm.value.pic.map((p) => getRelativePath(p)), // 转换为相对路径数组
     isShow: publishForm.value.isShow,
-    des: "",
+    des: publishForm.value.des,
+    status: 1,
   };
+  const formData = new FormData();
+  formData.append("goodsDTO", new Blob([JSON.stringify(goodsDTO)], { type: "application/json" }));
+  publishUploadFiles.value.forEach((file) => {
+    formData.append("images", file);
+  });
   try {
-    const res = await request.post("goods/save", payload);
+    const res = await request.post("goods/add", formData);
     const ok = res?.code === 200 || res?.success === true;
     if (!ok) {
       ElMessage.error(res?.msg || "发布失败");
       return;
     }
     ElMessage.success(res?.msg || "发布成功");
+    publishForm.value = { title: "", price: "", categoryId: null, pic: [], isShow: 1, des: "" };
+    publishUploadFiles.value = [];
   } catch (e: any) {
     ElMessage.error(e?.message || "发布失败");
   }
@@ -961,12 +999,12 @@ const onAvatarChange = async (file: any) => {
   }
 };
 const submitProfile = async () => {
-  const raw = localStorage.getItem("merchant_user");
+  const raw = sessionStorage.getItem("merchant_user") || localStorage.getItem("merchant_user");
   const u = raw ? JSON.parse(raw) : {};
   const merged = {
     ...u,
     username: profileForm.value.username,
-    gender: profileForm.value.gender,
+    gender: Number(profileForm.value.gender),
     icon: profileForm.value.avatar,
     des: profileForm.value.des,
   };
@@ -984,11 +1022,10 @@ const submitProfile = async () => {
       ElMessage.error(res?.msg || "保存失败");
       return;
     }
-    localStorage.setItem(
-      "merchant_user",
-      JSON.stringify({ ...merged, id: payload.id })
-    );
-    user.value = { ...merged, id: payload.id };
+    const updatedLocal = { ...merged, id: payload.id };
+    setStoredMerchantUser(updatedLocal);
+    user.value = updatedLocal;
+    await refreshMerchantFromServer();
     ElMessage.success(res?.msg || "保存成功");
   } catch (e: any) {
     ElMessage.error(e?.message || "保存失败");

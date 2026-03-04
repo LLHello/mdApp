@@ -114,10 +114,10 @@ const goCoupon = () => {
   position: sticky;
   top: 0;
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-columns: 1fr minmax(320px, 3fr) 1fr;
   align-items: center;
   gap: 16px;
-  padding: 12px 24px;
+  padding: 12px clamp(16px, 3vw, 48px);
   background: var(--jd-gray-card);
   border-bottom: 1px solid #ebeef5;
   z-index: 1000;
