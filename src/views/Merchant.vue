@@ -37,6 +37,7 @@
           @click="switchTab(a.key)"
         >
           {{ a.title }}
+          <span v-if="a.key === 'messages' && merchantUnreadCount > 0" class="badge">{{ merchantUnreadCount }}</span>
         </button>
       </aside>
       <section class="content">
@@ -249,6 +250,32 @@
               </el-table-column>
             </el-table>
           </div>
+          <div v-else-if="active === 'messages'" class="pane">
+            <el-tabs v-model="msgTab">
+              <el-tab-pane label="公告" name="notice">
+                <div class="toolbar">
+                  <el-button size="small" @click="onRefresh">刷新</el-button>
+                </div>
+                <el-empty v-if="merchantNotices.length === 0" description="暂无公告" />
+                <el-timeline v-else>
+                  <el-timeline-item
+                    v-for="n in merchantNotices"
+                    :key="n.id"
+                    :timestamp="formatTime(n.createTime || n.time)"
+                    type="primary"
+                  >
+                    <div class="notice" :class="{ unread: !n.read }">
+                      <div class="title">{{ n.title }}</div>
+                      <v-md-editor :model-value="n.content" mode="preview"></v-md-editor>
+                    </div>
+                  </el-timeline-item>
+                </el-timeline>
+              </el-tab-pane>
+              <el-tab-pane label="聊天" name="chat">
+                <el-empty description="聊天功能筹备中" />
+              </el-tab-pane>
+            </el-tabs>
+          </div>
           <div v-else-if="active === 'profile'" class="pane">
             <el-form :model="profileForm" label-width="90px">
               <el-form-item label="头像">
@@ -324,6 +351,13 @@
               </template>
             </el-dialog>
           </div>
+          <el-dialog v-model="noticeDialogVisible" title="系统公告" width="520px">
+            <v-md-editor :model-value="noticeDialogContent" mode="preview"></v-md-editor>
+            <template #footer>
+              <el-button @click="noticeDialogVisible = false">取消</el-button>
+              <el-button type="primary" @click="confirmMerchantNotice">我知道了</el-button>
+            </template>
+          </el-dialog>
         </el-card>
       </section>
     </div>
@@ -331,10 +365,11 @@
 </template>
 
 <script setup lang="ts" name="Merchant">
-import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import request from "@/utils/request";
 import { useRouter } from "vue-router";
+import { initNoticeSocketForMerchant, listNotices, listUnread, markRead, unreadCount, syncNotices } from "@/utils/notice";
 
 const raw = sessionStorage.getItem("merchant_user");
 const user = ref<any>(raw ? JSON.parse(raw) : null);
@@ -369,6 +404,7 @@ const avatarUrl = computed(() => normalizeAvatar(getAvatarPath(user.value)));
 const actions = [
   { key: "publish", title: "商品发布" },
   { key: "edit", title: "商品管理" },
+  { key: "messages", title: "消息中心" },
   { key: "profile", title: "个人信息修改" },
 ];
 const active = ref<string>("publish");
@@ -567,6 +603,84 @@ const fetchCategories = async () => {
 };
 onMounted(fetchCategories);
 onMounted(refreshMerchantFromServer);
+onMounted(() => {
+  initNoticeSocketForMerchant();
+});
+
+const getMid = () => Number(user.value?.id ?? user.value?.userId ?? user.value?.uid ?? 0);
+const merchantNotices = ref<any[]>([]);
+const merchantUnreadCount = ref(0);
+
+const refreshMerchantUnread = () => {
+  const mid = getMid();
+  if (mid) {
+    merchantUnreadCount.value = unreadCount("merchant", mid);
+  }
+};
+
+const loadMerchantNotices = () => {
+  const mid = getMid();
+  if (mid) {
+    merchantNotices.value = listNotices("merchant", mid);
+    refreshMerchantUnread();
+  }
+};
+const onRefresh = async () => {
+  const mid = getMid();
+  if (mid) {
+    const list = await syncNotices("merchant", mid);
+    merchantNotices.value = list;
+    refreshMerchantUnread();
+  }
+};
+const msgTab = ref("notice");
+const formatTime = (t: number) => new Date(t).toLocaleString();
+onMounted(() => {
+  loadMerchantNotices();
+  // 自动同步最新消息
+  onRefresh();
+});
+
+const confirmMerchantNotice = () => {
+  const mid = getMid();
+  if (mid && noticeCurrentId.value) {
+    markRead("merchant", mid, noticeCurrentId.value);
+    loadMerchantNotices();
+    const unread = listUnread("merchant", mid);
+    if (unread.length > 0) {
+      noticeCurrentId.value = unread[0].id;
+      noticeDialogContent.value = unread[0].content || "";
+      noticeDialogVisible.value = true;
+      return;
+    }
+  }
+  noticeDialogVisible.value = false;
+};
+const noticeDialogVisible = ref(false);
+const noticeDialogContent = ref("");
+const noticeCurrentId = ref<string | null>(null);
+const showMerchantPopupIfUnread = () => {
+  const mid = getMid();
+  if (!mid) return;
+  const unread = listUnread("merchant", mid);
+  refreshMerchantUnread();
+  if (unread.length > 0) {
+    noticeCurrentId.value = unread[0].id;
+    noticeDialogContent.value = unread[0].content || "";
+    noticeDialogVisible.value = true;
+  }
+};
+onMounted(() => {
+  showMerchantPopupIfUnread();
+  window.addEventListener("notice:new", showMerchantPopupIfUnread as any);
+  window.addEventListener("notice:read", refreshMerchantUnread as any);
+  window.addEventListener("notice:readall", refreshMerchantUnread as any);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("notice:new", showMerchantPopupIfUnread as any);
+  window.removeEventListener("notice:read", refreshMerchantUnread as any);
+  window.removeEventListener("notice:readall", refreshMerchantUnread as any);
+});
 
 const onPublishPicChange = (file: any) => {
   if (!file?.raw) return;
@@ -1071,6 +1185,11 @@ const submitPwd = async () => {
 </script>
 
 <style scoped>
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
 .merchant {
   padding: 16px 24px;
 }
@@ -1152,6 +1271,17 @@ const submitPwd = async () => {
   cursor: pointer;
   margin-bottom: 8px;
   transition: all 0.15s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.badge {
+  background-color: var(--jd-red);
+  color: white;
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .menu-item:hover {
   background: #f5f7fa;

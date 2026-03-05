@@ -1,5 +1,12 @@
 <template>
   <aside class="right-sidebar">
+    <button class="item" type="button" @click="go('/messages')">
+      <div class="icon-wrap">
+        <el-icon><Bell /></el-icon>
+        <span class="badge" v-if="badgeCount > 0">{{ badgeCount }}</span>
+      </div>
+      <div class="label">消息</div>
+    </button>
     <button class="item" type="button" @click="go('/cart')">
       <div class="icon-wrap">
         <el-icon><ShoppingCart /></el-icon>
@@ -17,7 +24,7 @@
       <div class="icon-wrap">
         <el-icon><Headset /></el-icon>
       </div>
-      <div class="label">客服</div>
+      <div class="label">AI客服</div>
     </button>
     <button class="item" type="button" @click="go('/feedback')">
       <div class="icon-wrap">
@@ -29,10 +36,36 @@
 </template>
 
 <script setup lang="ts" name="RightSidebar">
-import { ShoppingCart, User, Headset, EditPen } from '@element-plus/icons-vue'
+import { ShoppingCart, User, Headset, EditPen, Bell } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { unreadCount } from '@/utils/notice'
 const router = useRouter()
 const go = (path: string) => router.push(path)
+const badgeCount = ref<number>(0)
+const getUid = () => {
+  try {
+    const raw = sessionStorage.getItem('user_user')
+    const u = raw ? JSON.parse(raw) : null
+    return u?.id ?? u?.userId ?? u?.uid ?? null
+  } catch { return null }
+}
+const refreshBadge = () => {
+  const uid = getUid()
+  if (uid != null) badgeCount.value = unreadCount('user', uid)
+}
+const onNew = () => refreshBadge()
+onMounted(() => {
+  refreshBadge()
+  window.addEventListener('notice:new', onNew as any)
+  window.addEventListener('notice:readall', onNew as any)
+  window.addEventListener('notice:read', onNew as any)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('notice:new', onNew as any)
+  window.removeEventListener('notice:readall', onNew as any)
+  window.removeEventListener('notice:read', onNew as any)
+})
 </script>
 
 <style scoped>

@@ -27,6 +27,12 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('../views/Login.vue')
   },
   {
+    path: '/messages',
+    name: 'Messages',
+    component: () => import('../views/Messages.vue'),
+    meta: { requiresAuth: true, roles: [0] }
+  },
+  {
     path: '/product/:id',
     name: 'ProductDetail',
     component: () => import('../views/ProductDetail.vue'),
