@@ -48,7 +48,17 @@
           <div class="desc-label">商品描述：</div>
           <div class="desc">{{ product.des || "暂无描述" }}</div>
           <div class="actions">
-            <el-button type="primary" size="large">立即购买</el-button>
+            <el-button type="primary" size="large" @click="handleBuy">立即购买</el-button>
+            <el-button type="warning" size="large" plain @click="addToCart">加入购物车</el-button>
+            <el-button 
+              type="danger" 
+              size="large" 
+              plain 
+              @click="toggleFavorite"
+              :icon="isFavorite ? 'StarFilled' : 'Star'"
+            >
+              {{ isFavorite ? '已收藏' : '收藏' }}
+            </el-button>
           </div>
         </div>
       </div>
@@ -58,11 +68,14 @@
 </template>
 
 <script setup lang="ts" name="ProductDetail">
-import { ref, onMounted, watch } from "vue";
-import { useRoute } from "vue-router";
+import { ref, onMounted, watch, computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from 'element-plus';
+import { Star, StarFilled } from '@element-plus/icons-vue';
 import request from "@/utils/request";
 
 const route = useRoute();
+const router = useRouter();
 const product = ref<any>(null);
 const images = ref<string[]>([]);
 const activeIndex = ref(0);
@@ -71,6 +84,12 @@ const carouselRef = ref<any>(null);
 const clickCount = ref<number>(0);
 const merchantName = ref<string>("");
 const merchantAvatar = ref<string>("");
+const isFavorite = ref(false);
+
+const userInfo = computed(() => {
+  const userStr = sessionStorage.getItem('user_user');
+  return userStr ? JSON.parse(userStr) : null;
+});
 
 const baseURL = request?.defaults?.baseURL || "";
 const normalizeAvatar = (p: string) => {
@@ -100,6 +119,9 @@ const fetchProduct = async () => {
     const ok = res?.code === 200 || res?.success === true;
     if (ok && res.data) {
       product.value = res.data;
+      
+      // 检查收藏状态
+      checkFavoriteStatus();
 
       let picList: string[] = [];
       if (res.data.pic) {
@@ -188,6 +210,106 @@ const fetchMerchant = async (mid: number) => {
   } catch {}
   merchantName.value = "";
   merchantAvatar.value = "";
+};
+
+const checkFavoriteStatus = async () => {
+  if (!userInfo.value || !product.value?.id) return;
+  try {
+    const res: any = await request.get("collection/isCollection", {
+      params: {
+        userId: userInfo.value.id,
+        goodsId: product.value.id
+      }
+    });
+    // 后端返回 Result.success(true/false) -> res.data = true/false
+    if (res?.code === 200 || res?.success === true) {
+      isFavorite.value = res.data === true;
+    }
+  } catch (e) {
+    // ignore
+  }
+};
+
+const toggleFavorite = async () => {
+  if (!userInfo.value) {
+    ElMessage.warning("请先登录");
+    router.push("/login");
+    return;
+  }
+  if (!product.value?.id) return;
+
+  try {
+    if (isFavorite.value) {
+      // 取消收藏: DELETE /collection/delete?userId=...&goodsId=...
+      const res: any = await request.delete("collection/delete", {
+        params: {
+          userId: userInfo.value.id,
+          goodsId: product.value.id
+        }
+      });
+      const ok = res?.code === 200 || res?.success === true;
+      if (ok) {
+        isFavorite.value = false;
+        ElMessage.success("已取消收藏");
+      } else {
+        ElMessage.error(res?.msg || "操作失败");
+      }
+    } else {
+      // 添加收藏: POST /collection/add?userId=...&goodsId=...
+      const res: any = await request.post("collection/add", null, {
+        params: {
+          userId: userInfo.value.id,
+          goodsId: product.value.id
+        }
+      });
+      const ok = res?.code === 200 || res?.success === true;
+      if (ok) {
+        isFavorite.value = true;
+        ElMessage.success("已收藏");
+      } else {
+        ElMessage.error(res?.msg || "操作失败");
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || "操作失败");
+  }
+};
+
+const addToCart = async () => {
+  if (!userInfo.value) {
+    ElMessage.warning("请先登录");
+    router.push("/login");
+    return;
+  }
+  if (!product.value?.id) return;
+
+  try {
+    const res: any = await request.post("cart/add", null, {
+      params: {
+        userId: userInfo.value.id,
+        goodsId: product.value.id,
+        count: 1 // 默认添加1件
+      }
+    });
+    
+    if (res?.code === 200 || res?.success === true) {
+      ElMessage.success("已加入购物车");
+    } else {
+      ElMessage.error(res?.msg || "加入购物车失败");
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || "加入购物车失败");
+  }
+};
+
+const handleBuy = () => {
+  if (!userInfo.value) {
+    ElMessage.warning("请先登录");
+    router.push("/login");
+    return;
+  }
+  // 这里可以跳转到订单确认页，或者直接触发购买逻辑
+  ElMessage.success("功能开发中，敬请期待");
 };
 
 const onCarouselChange = (idx: number) => {

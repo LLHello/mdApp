@@ -50,8 +50,16 @@
                     <el-radio-button label="all">推送给所有人</el-radio-button>
                     <el-radio-button label="user">推送给个人</el-radio-button>
                   </el-radio-group>
-                  <div class="mt">
+                  <div class="mt emoji-input-container">
                     <v-md-editor v-model="msg" height="400px" placeholder="请输入公告内容"></v-md-editor>
+                    <el-popover placement="top-start" :width="350" trigger="click">
+                      <template #reference>
+                        <el-button class="emoji-btn" circle size="small" style="top: 10px; right: 10px; bottom: auto;">😊</el-button>
+                      </template>
+                      <div class="emoji-picker-wrapper">
+                        <Picker :data="emojiIndex" set="twitter" @select="addNoticeEmoji" :showPreview="false" :showSearch="false" />
+                      </div>
+                    </el-popover>
                   </div>
                   <div v-if="mode === 'user'" class="mt">
                     <el-select
@@ -70,10 +78,10 @@
                       />
                     </el-select>
                   </div>
-                  <div class="actions">
-                    <el-button type="primary" @click="onPush">推送</el-button>
-                    <el-button @click="reset">清空</el-button>
-                  </div>
+              <div class="actions">
+                  <el-button type="primary" @click="onPush">推送</el-button>
+                  <el-button @click="reset">清空</el-button>
+                </div>
                 </div>
               </el-tab-pane>
               <el-tab-pane label="公告查看" name="view">
@@ -235,6 +243,146 @@
               </div>
             </el-dialog>
           </div>
+          <div v-else-if="active === 'feedback'" class="pane">
+            <div class="toolbar" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+              <el-radio-group v-model="feedbackFilter" size="small">
+                <el-radio-button label="all">全部</el-radio-button>
+                <el-radio-button label="replied">已回复</el-radio-button>
+                <el-radio-button label="pending">待回复</el-radio-button>
+              </el-radio-group>
+              <el-button type="primary" size="small" @click="loadFeedback">刷新列表</el-button>
+            </div>
+            <el-table :data="filteredFeedbackList" style="width: 100%" height="450">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="title" label="标题" width="150" show-overflow-tooltip />
+              <el-table-column prop="content" label="内容" show-overflow-tooltip />
+              <el-table-column prop="userId" label="用户ID" width="100" />
+              <el-table-column prop="status" label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 1 || row.status === 2 ? 'success' : 'info'">
+                    {{ row.status === 1 ? '已回复' : (row.status === 2 ? '已查看' : '待回复') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="时间" width="170">
+                <template #default="{ row }">
+                  {{ formatTime(row.createTime || row.time) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="120">
+                <template #default="{ row }">
+                  <el-button size="small" type="primary" @click="showFeedbackDetail(row)">查看</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="pagination">
+              <el-pagination
+                background
+                layout="prev, pager, next"
+                :total="feedbackTotal"
+                :page-size="feedbackQuery.pageSize"
+                :current-page="feedbackQuery.pageNum"
+                @current-change="onFeedbackPageChange"
+              />
+            </div>
+            <!-- Feedback Detail Dialog -->
+            <el-dialog v-model="feedbackDetailVisible" title="反馈详情" width="600px">
+              <div v-if="currentFeedback">
+                <p><strong>用户ID：</strong>{{ currentFeedback.userId }}</p>
+                <p><strong>标题：</strong>{{ currentFeedback.title || '无标题' }}</p>
+                <p><strong>内容：</strong></p>
+                <div style="background: #f5f7fa; padding: 10px; border-radius: 4px; margin-bottom: 10px; white-space: pre-wrap;">
+                  {{ currentFeedback.content }}
+                </div>
+                <div v-if="currentFeedback.picList && currentFeedback.picList.length">
+                   <p><strong>图片：</strong></p>
+                   <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                     <img 
+                       v-for="(p, i) in currentFeedback.picList" 
+                       :key="i" 
+                       :src="normalizeAvatar(p)" 
+                       style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px;" 
+                     />
+                   </div>
+                </div>
+              </div>
+              <template #footer>
+                <el-button @click="feedbackDetailVisible = false">关闭</el-button>
+                <el-button 
+                  type="primary" 
+                  @click="openReplyDialog" 
+                  v-if="currentFeedback && currentFeedback.status === 0"
+                >
+                  回复用户
+                </el-button>
+                <el-button type="success" @click="viewReply(currentFeedback)" v-else>查看回复</el-button>
+              </template>
+            </el-dialog>
+            <!-- Reply Dialog -->
+            <el-dialog v-model="replyVisible" title="回复用户" width="500px">
+              <div class="emoji-input-container">
+                <el-input
+                  v-model="replyMsg"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="请输入回复内容"
+                />
+                <el-popover placement="bottom-start" :width="350" trigger="click">
+                  <template #reference>
+                    <el-button class="emoji-btn" circle size="small">😊</el-button>
+                  </template>
+                  <div class="emoji-picker-wrapper">
+                    <Picker :data="emojiIndex" set="twitter" @select="addReplyEmoji" :showPreview="false" :showSearch="false" />
+                  </div>
+                </el-popover>
+              </div>
+              <template #footer>
+                <el-button @click="replyVisible = false">取消</el-button>
+                <el-button type="primary" @click="sendReply">发送</el-button>
+              </template>
+            </el-dialog>
+          </div>
+          <div v-else-if="active === 'syslog'" class="pane">
+            <div class="toolbar">
+              <el-input v-model="logQuery.username" placeholder="用户名" style="width: 150px; margin-right: 8px;" clearable @clear="loadLogs" />
+              <el-input v-model="logQuery.module" placeholder="模块" style="width: 150px; margin-right: 8px;" clearable @clear="loadLogs" />
+              <el-input v-model="logQuery.cost" placeholder="最小耗时(ms)" type="number" style="width: 150px; margin-right: 8px;" clearable @clear="loadLogs" />
+              <el-button type="primary" @click="loadLogs">查询</el-button>
+            </div>
+            <el-table :data="logList" style="width: 100%" height="450" :row-style="tableRowStyle">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="username" label="用户名" width="120" />
+              <el-table-column prop="module" label="模块" width="120" />
+              <el-table-column prop="operation" label="操作类型" width="120" />
+              <el-table-column prop="description" label="描述" width="150" show-overflow-tooltip />
+              <el-table-column prop="requestUrl" label="请求URL" width="150" show-overflow-tooltip />
+              <el-table-column prop="requestMethod" label="方法" width="80" />
+              <el-table-column prop="params" label="请求参数" width="150" show-overflow-tooltip />
+              <el-table-column prop="timeCost" label="耗时(ms)" width="100" />
+              <el-table-column prop="result" label="结果" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="row.result === '成功' ? 'success' : 'danger'">
+                    {{ row.result }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="时间" width="170">
+                <template #default="{ row }">
+                  {{ formatTime(row.createTime) }}
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="pagination">
+              <el-pagination
+                background
+                layout="prev, pager, next"
+                :total="logTotal"
+                :page-size="logQuery.pageSize"
+                :current-page="logQuery.pageNum"
+                @current-change="onLogPageChange"
+              />
+            </div>
+          </div>
           <div v-else-if="active === 'profile'" class="pane">
             <el-form :model="profileForm" label-width="90px">
               <el-form-item label="头像">
@@ -276,6 +424,21 @@ import { ref, computed, onMounted, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import request from "@/utils/request";
 import { useRouter } from "vue-router";
+// @ts-ignore
+import { Picker, EmojiIndex } from 'emoji-mart-vue-fast/src';
+import 'emoji-mart-vue-fast/css/emoji-mart.css';
+// @ts-ignore
+import data from 'emoji-mart-vue-fast/data/all.json';
+
+const emojiIndex = new EmojiIndex(data);
+
+const addNoticeEmoji = (emoji: any) => {
+  msg.value += emoji.native;
+};
+
+const addReplyEmoji = (emoji: any) => {
+  replyMsg.value += emoji.native;
+};
 
 const raw = sessionStorage.getItem("admin_user");
 const user = ref<any>(raw ? JSON.parse(raw) : null);
@@ -307,6 +470,8 @@ const actions = [
   { key: "notice", title: "公告推送" },
   { key: "user", title: "用户管理" },
   { key: "goods", title: "商品管理" },
+  { key: "feedback", title: "反馈管理" },
+  { key: "syslog", title: "系统日志" },
   { key: "profile", title: "个人中心" },
 ];
 const active = ref<string>("notice");
@@ -435,7 +600,192 @@ const toggleUserStatus = async (row: any) => {
 watch(active, (val) => {
   if (val === 'user') loadAllUsers();
   if (val === 'goods') loadCategories();
+  if (val === 'feedback') loadFeedback();
+  if (val === 'syslog') loadLogs();
 });
+
+// 反馈管理相关
+const feedbackList = ref<any[]>([]);
+const feedbackTotal = ref(0);
+const feedbackQuery = ref({ pageNum: 1, pageSize: 10 });
+const feedbackFilter = ref('all'); // all, replied, pending
+
+const filteredFeedbackList = computed(() => {
+  if (feedbackFilter.value === 'replied') {
+    return feedbackList.value.filter(item => item.status === 1 || item.status === 2);
+  } else if (feedbackFilter.value === 'pending') {
+    return feedbackList.value.filter(item => item.status === 0);
+  }
+  return feedbackList.value;
+});
+const feedbackDetailVisible = ref(false);
+const currentFeedback = ref<any>(null);
+const replyVisible = ref(false);
+const replyMsg = ref("");
+
+const loadFeedback = async () => {
+  try {
+    const res: any = await request.get("feedback/pull", {
+      params: {
+        pageNum: feedbackQuery.value.pageNum,
+        pageSize: feedbackQuery.value.pageSize
+      }
+    });
+    const ok = res?.code === 200 || res?.success === true;
+    const data = ok ? (res.data || res) : {};
+    
+    if (data && (Array.isArray(data.list) || Array.isArray(data))) {
+       const list = Array.isArray(data.list) ? data.list : data;
+       // 确保status字段被正确处理
+       feedbackList.value = list
+         .map((item: any) => ({
+           ...item,
+           status: item.status !== undefined ? Number(item.status) : 0 // 默认未回复
+         }))
+         .sort((a: any, b: any) => {
+           // 优先使用 createTime 进行倒序排列
+           const t1 = new Date(a.createTime || a.time).getTime();
+           const t2 = new Date(b.createTime || b.time).getTime();
+           return t2 - t1;
+         });
+       feedbackTotal.value = data.total || feedbackList.value.length;
+    } else {
+       feedbackList.value = [];
+       feedbackTotal.value = 0;
+    }
+  } catch (e: any) {
+    ElMessage.error("获取反馈列表失败");
+  }
+};
+
+const onFeedbackPageChange = (page: number) => {
+  feedbackQuery.value.pageNum = page;
+  loadFeedback();
+};
+
+const showFeedbackDetail = (row: any) => {
+  const pics = row.pic ? String(row.pic).split(",").filter(Boolean) : [];
+  currentFeedback.value = { ...row, picList: pics, userId: row.userId ?? row.uid ?? row.id }; // 尝试兼容 userId, uid, 或 id
+  feedbackDetailVisible.value = true;
+};
+
+const viewReply = async (item: any) => {
+  if (!item?.id) return;
+  try {
+    // 使用反馈ID作为replyId去查询
+    const res: any = await request.get(`/feedback/getReply/${item.id}`);
+    const ok = res?.code === 200 || res?.success === true;
+    const content = ok ? (res.data?.content || res.data) : null;
+    
+    if (content) {
+      ElMessageBox.alert(content, '回复内容', {
+        confirmButtonText: '确定',
+        type: 'info'
+      });
+    } else {
+      ElMessage.info('暂无回复内容');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '获取回复失败');
+  }
+};
+
+const openReplyDialog = () => {
+  replyMsg.value = "";
+  replyVisible.value = true;
+};
+
+const sendReply = async () => {
+  if (!replyMsg.value.trim()) {
+    ElMessage.warning("请输入回复内容");
+    return;
+  }
+  if (!currentFeedback.value?.id) {
+    ElMessage.error("无法获取反馈ID");
+    return;
+  }
+  try {
+    // 使用 FormData 发送数据，兼容性更好
+    const formData = new FormData();
+    formData.append('feedbackId', String(currentFeedback.value.id));
+    formData.append('content', replyMsg.value);
+
+    // 管理员回复反馈接口: POST /feedback/replyFeedback
+    const res: any = await request.post("/feedback/replyFeedback", formData);
+    
+    const ok = res?.code === 200 || res?.success === true;
+    
+    if (ok) {
+      ElMessage.success("回复成功");
+      replyVisible.value = false;
+      feedbackDetailVisible.value = false;
+      // 刷新列表以更新状态
+      loadFeedback();
+    } else {
+      ElMessage.error(res?.msg || "回复失败");
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || "回复失败");
+  }
+};
+
+// 系统日志相关
+const logList = ref<any[]>([]);
+const logTotal = ref(0);
+const logQuery = ref({
+  pageNum: 1,
+  pageSize: 10,
+  username: "",
+  module: "",
+  cost: ""
+});
+
+const loadLogs = async () => {
+  try {
+    let res: any;
+    if (logQuery.value.cost) {
+      res = await request.get(`sys/log/getCost/${logQuery.value.cost}`, {
+        params: {
+          pageNum: logQuery.value.pageNum,
+          pageSize: logQuery.value.pageSize
+        }
+      });
+    } else {
+      res = await request.get("sys/log/list", {
+        params: {
+          pageNum: logQuery.value.pageNum,
+          pageSize: logQuery.value.pageSize,
+          username: logQuery.value.username || undefined,
+          module: logQuery.value.module || undefined
+        }
+      });
+    }
+    // 假设后端直接返回 PageInfo 对象，或者放在 data 字段中
+    // PageInfo 结构通常为 { list: [], total: 100, ... }
+    const data = (res?.code === 200 || res?.success === true) ? res.data : res;
+    if (data && Array.isArray(data.list)) {
+      logList.value = data.list;
+      logTotal.value = data.total || 0;
+    } else {
+      logList.value = [];
+      logTotal.value = 0;
+    }
+  } catch (e) {
+    ElMessage.error("获取日志失败");
+  }
+};
+
+const onLogPageChange = (page: number) => {
+  logQuery.value.pageNum = page;
+  loadLogs();
+};
+
+const tableRowStyle = ({ row }: { row: any }) => {
+  if (row.timeCost > 50) {
+    return { backgroundColor: '#fef0f0', color: '#f56c6c' };
+  }
+  return {};
+};
 
 // 商品管理相关
 const categories = ref<any[]>([]);
@@ -802,6 +1152,11 @@ onMounted(() => {
   justify-content: flex-end;
   margin-bottom: 8px;
 }
+.pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
 .avatar-large {
   width: 96px;
   height: 96px;
@@ -891,5 +1246,41 @@ onMounted(() => {
 }
 :deep(.github-markdown-body pre) {
   background-color: #1e1e1e;
+}
+.reply-dialog-content {
+  padding: 10px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #303133;
+  white-space: pre-wrap;
+}
+.emoji-input-container {
+  position: relative;
+  width: 100%;
+}
+.emoji-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+  font-size: 18px;
+}
+.emoji-picker-wrapper {
+  display: flex;
+  justify-content: center;
+}
+.emoji-picker-wrapper :deep(.emoji-mart-category-label span) {
+  background-color: transparent !important;
+  color: #666;
+}
+.emoji-picker-wrapper :deep(.emoji-mart-bar) {
+  border-bottom: 1px solid #dcdfe6;
+  background-color: #000 !important;
+}
+.emoji-picker-wrapper :deep(.emoji-mart-anchor-selected) {
+  color: #409EFF !important;
+}
+.emoji-picker-wrapper :deep(.emoji-mart-anchor-bar) {
+  background-color: #409EFF !important;
 }
 </style>
