@@ -5,21 +5,15 @@ import { ElMessage } from 'element-plus'
 const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
-    component: () => import('../layouts/MainLayout.vue'),
-    children: [
-      {
-        path: '',
-        name: 'Home',
-        component: () => import('../views/Home.vue'),
-        meta: { roles: [0] }
-      },
-      {
-        path: 'about',
-        name: 'About',
-        component: () => import('../views/About.vue'),
-        meta: { roles: [0] }
-      }
-    ]
+    name: 'Home',
+    component: () => import('../views/Home.vue'),
+    meta: { roles: [0] }
+  },
+  {
+    path: '/about',
+    name: 'About',
+    component: () => import('../views/About.vue'),
+    meta: { roles: [0] }
   },
   {
     path: '/login',
@@ -75,6 +69,12 @@ const routes: Array<RouteRecordRaw> = [
     meta: { roles: [0] }
   },
   {
+    path: '/merchant/:id',
+    name: 'MerchantStore',
+    component: () => import('../views/MerchantStore.vue'),
+    meta: { roles: [0] }
+  },
+  {
     path: '/merchant',
     name: 'Merchant',
     component: () => import('../views/Merchant.vue'),
@@ -102,7 +102,30 @@ router.beforeEach((to, from, next) => {
     // Determine expected role for this route; default user when not specified
     const expectedRole = requiredRoles && requiredRoles.length ? requiredRoles[0] : 0
     const prefix = rolePrefix(expectedRole)
-    const isLoggedForRole = sessionStorage.getItem(`${prefix}_isLoggedIn`) === '1'
+    // Check if logged in via sessionStorage; if not, check localStorage and sync
+    let isLoggedForRole = sessionStorage.getItem(`${prefix}_isLoggedIn`) === '1'
+    if (!isLoggedForRole) {
+      // Try to restore from localStorage
+      const lsIsLogged = localStorage.getItem(`${prefix}_isLoggedIn`) === '1';
+      if (lsIsLogged) {
+        sessionStorage.setItem(`${prefix}_isLoggedIn`, '1')
+        
+        const savedUser = localStorage.getItem(`${prefix}_user`)
+        if (savedUser) sessionStorage.setItem(`${prefix}_user`, savedUser)
+        
+        const savedToken = localStorage.getItem(`${prefix}_token`)
+        const globalToken = localStorage.getItem('token')
+        const finalToken = savedToken || globalToken
+
+        if (finalToken) {
+          sessionStorage.setItem(`${prefix}_token`, finalToken)
+          sessionStorage.setItem('token', finalToken)
+        }
+        
+        isLoggedForRole = true
+      }
+    }
+
     if (!isLoggedForRole) {
       ElMessage.warning('请先登录')
       next({ path: '/login' })

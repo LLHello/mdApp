@@ -11,9 +11,12 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "@kangc/v-md-editor": "^2.3.18",
+    "@types/markdown-it": "^14.1.2",
     "axios": "^1.13.2",
     "element-plus": "^2.12.0",
     "emoji-mart-vue-fast": "^15.0.5",
+    "lottie-web": "^5.13.0",
+    "markdown-it": "^14.1.1",
     "vue": "^3.5.24",
     "vue-router": "^4.6.4"
   },

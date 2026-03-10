@@ -1,8 +1,8 @@
 import axios from 'axios'
 
 const request = axios.create({
-  baseURL: 'http://localhost:8080/',
-  timeout: 5000
+  baseURL: '/api', // 使用代理，解决跨域问题
+  timeout: 120000 // AI 接口响应较慢，延长超时时间到 2 分钟
 })
 
 // 请求拦截器
@@ -13,7 +13,10 @@ request.interceptors.request.use(
     const path = window.location.pathname
 
     // 根据当前路径优先获取对应角色的token
-    if (path.startsWith('/merchant')) {
+    // 识别商家后台：以 /merchant 开头，但排除 /merchant/:id (店铺页)
+    const isMerchantDashboard = path === '/merchant' || (path.startsWith('/merchant/') && !/^\/merchant\/\d+/.test(path));
+
+    if (isMerchantDashboard) {
       token = sessionStorage.getItem('merchant_token')
     } else if (path.startsWith('/admin')) {
       token = sessionStorage.getItem('admin_token')
@@ -24,7 +27,7 @@ request.interceptors.request.use(
 
     // 如果没有找到特定角色的token，尝试获取全局token
     if (!token) {
-      token = sessionStorage.getItem('token')
+      token = sessionStorage.getItem('token') || localStorage.getItem('token')
     }
 
     if (token) {

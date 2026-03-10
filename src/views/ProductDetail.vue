@@ -40,9 +40,10 @@
           <div class="meta">
             <span class="clicks">点击量：{{ clickCount }}</span>
           </div>
-          <div class="merchant" v-if="merchantName || merchantAvatar">
+          <div class="merchant" v-if="merchantName || merchantAvatar" @click="goToMerchant">
             <img class="merchant-avatar" :src="merchantAvatar || '/vite.svg'" alt="商家头像" />
             <span class="merchant-name">{{ merchantName || "商家" }}</span>
+            <el-icon class="arrow-icon"><ArrowRight /></el-icon>
           </div>
           <div class="price">￥{{ Number(product.price).toFixed(2) }}</div>
           <div class="desc-label">商品描述：</div>
@@ -56,6 +57,7 @@
               plain 
               @click="toggleFavorite"
               :icon="isFavorite ? 'StarFilled' : 'Star'"
+              :loading="favoriteLoading"
             >
               {{ isFavorite ? '已收藏' : '收藏' }}
             </el-button>
@@ -71,7 +73,7 @@
 import { ref, onMounted, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from 'element-plus';
-import { Star, StarFilled } from '@element-plus/icons-vue';
+import { Star, StarFilled, ArrowRight } from '@element-plus/icons-vue';
 import request from "@/utils/request";
 
 const route = useRoute();
@@ -84,7 +86,9 @@ const carouselRef = ref<any>(null);
 const clickCount = ref<number>(0);
 const merchantName = ref<string>("");
 const merchantAvatar = ref<string>("");
+const merchantId = ref<number | null>(null);
 const isFavorite = ref(false);
+const favoriteLoading = ref(false);
 
 const userInfo = computed(() => {
   const userStr = sessionStorage.getItem('user_user');
@@ -155,14 +159,22 @@ const fetchProduct = async () => {
         res.data?.mid ??
         null;
       if (mid != null) {
+        merchantId.value = Number(mid);
         fetchMerchant(Number(mid));
       } else {
+        merchantId.value = null;
         merchantName.value = "";
         merchantAvatar.value = "";
       }
     }
   } catch (e) {
     console.error("Fetch product detail failed", e);
+  }
+};
+
+const goToMerchant = () => {
+  if (merchantId.value) {
+    router.push(`/merchant/${merchantId.value}`);
   }
 };
 
@@ -212,21 +224,32 @@ const fetchMerchant = async (mid: number) => {
   merchantAvatar.value = "";
 };
 
+const favoriteId = ref<number | null>(null);
+
 const checkFavoriteStatus = async () => {
   if (!userInfo.value || !product.value?.id) return;
   try {
-    const res: any = await request.get("collection/isCollection", {
-      params: {
-        userId: userInfo.value.id,
-        goodsId: product.value.id
-      }
+    // 使用新接口获取所有收藏，然后在前端匹配
+    const res: any = await request.get("favorite/getStar", {
+      params: { userId: userInfo.value.id }
     });
-    // 后端返回 Result.success(true/false) -> res.data = true/false
+    
     if (res?.code === 200 || res?.success === true) {
-      isFavorite.value = res.data === true;
+      const list = res.data || [];
+      // 查找当前商品是否在收藏列表中 (targetType=1 为商品)
+      // 统一转换为字符串比较，避免类型不一致
+      const pid = String(product.value.id);
+      const found = list.find((item: any) => item.targetType === 1 && String(item.targetId) === pid);
+      if (found) {
+        isFavorite.value = true;
+        favoriteId.value = found.id;
+      } else {
+        isFavorite.value = false;
+        favoriteId.value = null;
+      }
     }
   } catch (e) {
-    // ignore
+    console.error("Check favorite status failed", e);
   }
 };
 
@@ -237,41 +260,64 @@ const toggleFavorite = async () => {
     return;
   }
   if (!product.value?.id) return;
+  
+  if (favoriteLoading.value) return;
+  favoriteLoading.value = true;
 
   try {
     if (isFavorite.value) {
-      // 取消收藏: DELETE /collection/delete?userId=...&goodsId=...
-      const res: any = await request.delete("collection/delete", {
-        params: {
-          userId: userInfo.value.id,
-          goodsId: product.value.id
-        }
+      // 取消收藏: PUT /favorite/unStar?id=...
+      if (!favoriteId.value) {
+        ElMessage.error("获取收藏信息失败，请刷新重试");
+        return;
+      }
+      
+      const res: any = await request.put("favorite/unStar", null, {
+        params: { id: favoriteId.value }
       });
+      
       const ok = res?.code === 200 || res?.success === true;
       if (ok) {
         isFavorite.value = false;
+        favoriteId.value = null;
         ElMessage.success("已取消收藏");
       } else {
         ElMessage.error(res?.msg || "操作失败");
       }
     } else {
-      // 添加收藏: POST /collection/add?userId=...&goodsId=...
-      const res: any = await request.post("collection/add", null, {
-        params: {
-          userId: userInfo.value.id,
-          goodsId: product.value.id
-        }
-      });
+      // 添加收藏: POST /favorite/star
+      // 参数 UserFavorite: { userId, targetType: 1, targetId: ... }
+      // 注意：后端接受对象，通常是用 application/json 或者 form-data
+      // 这里尝试用 form-data 也就是 post 第二个参数，或者 params
+      // 根据 Controller 定义 public Result star(UserFavorite userFavorite)，非 @RequestBody
+      // 通常意味着支持 x-www-form-urlencoded 或 query params
+      
+      const formData = new FormData();
+      formData.append('userId', userInfo.value.id);
+      formData.append('targetType', '1'); // 1: 商品
+      formData.append('targetId', String(product.value.id));
+      // createTime removed
+      
+      const res: any = await request.post("favorite/star", formData);
+      
       const ok = res?.code === 200 || res?.success === true;
       if (ok) {
-        isFavorite.value = true;
-        ElMessage.success("已收藏");
+        // 重新获取一下列表以拿到 ID
+        await checkFavoriteStatus();
+        if (isFavorite.value) {
+          ElMessage.success("已收藏");
+        } else {
+          // 假如checkFavoriteStatus没查到，可能是同步延迟，但这里也不好直接设置true，因为没有id无法取消
+          ElMessage.warning("收藏成功但同步状态失败，请刷新页面");
+        }
       } else {
         ElMessage.error(res?.msg || "操作失败");
       }
     }
   } catch (e: any) {
     ElMessage.error(e.message || "操作失败");
+  } finally {
+    favoriteLoading.value = false;
   }
 };
 
@@ -415,6 +461,17 @@ watch(
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+.merchant:hover {
+  background-color: #f5f7fa;
+}
+.arrow-icon {
+  font-size: 14px;
+  color: #909399;
 }
 .merchant-avatar {
   width: 28px;

@@ -293,6 +293,9 @@
                   />
                 </el-upload>
               </el-form-item>
+              <el-form-item label="粉丝数量">
+                <div class="fans-count-display">{{ fansCount }}</div>
+              </el-form-item>
               <el-form-item label="昵称">
                 <el-input v-model="profileForm.username" />
               </el-form-item>
@@ -405,7 +408,7 @@ const actions = [
   { key: "publish", title: "商品发布" },
   { key: "edit", title: "商品管理" },
   { key: "messages", title: "消息中心" },
-  { key: "profile", title: "个人信息修改" },
+  { key: "profile", title: "个人信息" },
 ];
 const active = ref<string>("publish");
 const paneTitle = computed(
@@ -525,9 +528,36 @@ const fetchMerchantGoods = async () => {
   }
 };
 
+const fansCount = ref(0);
+const fetchFansCount = async () => {
+  const mid = getMid();
+  if (!mid) return;
+  try {
+    const res: any = await request.get("favorite/getFans", {
+      params: { merchantId: mid }
+    });
+    if (res?.code === 200 || res?.success === true) {
+      // 兼容返回 list 或 count
+      if (Array.isArray(res.data)) {
+        fansCount.value = res.data.length;
+      } else if (typeof res.data === 'number') {
+        fansCount.value = res.data;
+      } else if (res.data?.total) {
+        fansCount.value = Number(res.data.total) || 0;
+      } else {
+        fansCount.value = 0;
+      }
+    }
+  } catch (e) {
+    console.error("Fetch fans count failed", e);
+  }
+};
+
 watch(active, (val) => {
   if (val === "edit" || val === "shelf") {
     fetchMerchantGoods();
+  } else if (val === "profile") {
+    fetchFansCount();
   }
 });
 const selected = ref<any>(null);
@@ -1315,6 +1345,11 @@ const submitPwd = async () => {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 12px;
+}
+.fans-count-display {
+  font-size: 16px;
+  font-weight: bold;
+  color: #f56c6c;
 }
 .image-preview {
   width: 100%;

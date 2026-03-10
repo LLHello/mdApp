@@ -193,11 +193,17 @@ const handleLogin = async () => {
     sessionStorage.setItem(`${prefix}_isLoggedIn`, "1");
     if (res?.data) {
       sessionStorage.setItem(`${prefix}_user`, JSON.stringify(res.data));
+      // 同步到 localStorage，以便多标签页共享
+      localStorage.setItem(`${prefix}_user`, JSON.stringify(res.data));
+      localStorage.setItem(`${prefix}_isLoggedIn`, "1");
+
       // 尝试多种方式获取token
       const token = res.data.token || (res as any).token || res.data?.data?.token;
       if (token) {
         sessionStorage.setItem("token", token);
         sessionStorage.setItem(`${prefix}_token`, token);
+        localStorage.setItem("token", token);
+        localStorage.setItem(`${prefix}_token`, token);
       }
     }
     if (prefix === "user") window.dispatchEvent(new Event("userstatechange"));

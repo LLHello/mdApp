@@ -57,6 +57,53 @@
           >修改密码</el-button
         >
       </div>
+
+      <div class="favorite-section" ref="favoriteSectionRef">
+        <el-divider content-position="left">我的收藏</el-divider>
+        <el-tabs v-model="favoriteTab" @tab-change="handleFavoriteTabChange">
+          <el-tab-pane label="收藏的商家" name="merchant">
+            <div v-if="!merchantFavorites.length" class="empty-state">
+               <LottieAnimation path="https://assets9.lottiefiles.com/packages/lf20_s8pbrcfw.json" width="200px" height="200px">
+                 <el-empty description="暂无收藏商家" />
+               </LottieAnimation>
+               <p style="text-align: center; color: #909399; margin-top: -40px;">暂无收藏商家</p>
+            </div>
+            <div v-else class="favorite-list">
+              <div v-for="item in merchantFavorites" :key="item.id" class="favorite-item">
+                <div class="favorite-info" @click="goToMerchant(item.targetId)">
+                  <img :src="normalizeAvatar(item.avatar || '')" class="favorite-img" />
+                  <div class="favorite-text">
+                    <div class="favorite-name">{{ item.name || '未知商家' }}</div>
+                    <div class="favorite-time">收藏时间：{{ formatTime(item.createTime) }}</div>
+                  </div>
+                </div>
+                <el-button type="danger" size="small" icon="Delete" circle @click="unStar(item.id, 'merchant')" />
+              </div>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="收藏的商品" name="product">
+            <div v-if="!productFavorites.length" class="empty-state">
+               <LottieAnimation path="https://assets9.lottiefiles.com/packages/lf20_s8pbrcfw.json" width="200px" height="200px">
+                 <el-empty description="暂无收藏商品" />
+               </LottieAnimation>
+               <p style="text-align: center; color: #909399; margin-top: -40px;">暂无收藏商品</p>
+            </div>
+            <div v-else class="favorite-list">
+              <div v-for="item in productFavorites" :key="item.id" class="favorite-item">
+                <div class="favorite-info" @click="goToProduct(item.targetId)">
+                  <img :src="normalizeAvatar(item.pic || '')" class="favorite-img" />
+                  <div class="favorite-text">
+                    <div class="favorite-name">{{ item.title || '未知商品' }}</div>
+                    <div class="favorite-desc">{{ item.des || '暂无描述' }}</div>
+                    <div class="favorite-time">收藏时间：{{ formatTime(item.createTime) }}</div>
+                  </div>
+                </div>
+                <el-button type="danger" size="small" icon="Delete" circle @click="unStar(item.id, 'product')" />
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
     </el-card>
 
     <!-- 修改密码弹窗 -->
@@ -84,14 +131,118 @@
 
 <script setup lang="ts" name="Profile">
 import { ref, computed, onMounted } from "vue";
-import { Plus } from "@element-plus/icons-vue";
+import { Plus, Delete } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import request from "@/utils/request";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import LottieAnimation from '@/components/LottieAnimation.vue';
 
 const router = useRouter();
+const route = useRoute();
 const isEditing = ref(false);
 const pwdDialogVisible = ref(false);
+
+// 收藏相关
+const favoriteTab = ref('merchant');
+const merchantFavorites = ref<any[]>([]);
+const productFavorites = ref<any[]>([]);
+
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '';
+  return new Date(timeStr).toLocaleString();
+};
+
+const handleFavoriteTabChange = () => {
+  // 可以根据 tab 切换做一些懒加载，这里暂不需要，因为 fetchFavorites 一次性加载了
+};
+
+const fetchFavorites = async () => {
+  if (!user.value?.id) return;
+  try {
+    const res: any = await request.get("favorite/getStar", {
+      params: { userId: user.value.id }
+    });
+    
+    if (res?.code === 200 || res?.success === true) {
+      const list = res.data || [];
+      // 分类
+      const merchants = list.filter((i: any) => i.targetType === 0);
+      const products = list.filter((i: any) => i.targetType === 1);
+      
+      // 异步获取详情
+      // 获取商家详情
+      const merchantPromises = merchants.map(async (item: any) => {
+        try {
+          const uRes: any = await request.get(`users/${item.targetId}`);
+          const uData = (uRes?.code === 200 || uRes?.success === true) ? uRes.data : {};
+          return {
+            ...item,
+            name: uData.username || uData.account || uData.nickname,
+            avatar: uData.icon || uData.avatar || uData.pic
+          };
+        } catch {
+          return item;
+        }
+      });
+      merchantFavorites.value = await Promise.all(merchantPromises);
+
+      // 获取商品详情
+      const productPromises = products.map(async (item: any) => {
+        try {
+          const gRes: any = await request.get(`goods/good/${item.targetId}`);
+          const gData = (gRes?.code === 200 || gRes?.success === true) ? gRes.data : {};
+          let pic = '';
+          if (gData.pic) {
+             const pics = Array.isArray(gData.pic) ? gData.pic : String(gData.pic).split(',');
+             pic = pics[0];
+          }
+          return {
+            ...item,
+            title: gData.title,
+            des: gData.des,
+            pic: pic
+          };
+        } catch {
+          return item;
+        }
+      });
+      productFavorites.value = await Promise.all(productPromises);
+    }
+  } catch (e) {
+    console.error("Fetch favorites failed", e);
+  }
+};
+
+const unStar = async (id: number, type: string) => {
+  try {
+    const res: any = await request.put("favorite/unStar", null, {
+      params: { id }
+    });
+    if (res?.code === 200 || res?.success === true) {
+      ElMessage.success("取消收藏成功");
+      // 本地移除
+      if (type === 'merchant') {
+        merchantFavorites.value = merchantFavorites.value.filter(item => item.id !== id);
+      } else {
+        productFavorites.value = productFavorites.value.filter(item => item.id !== id);
+      }
+    } else {
+      ElMessage.error(res?.msg || "操作失败");
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || "操作失败");
+  }
+};
+
+const goToMerchant = (id: number) => {
+  if (id) {
+    router.push(`/merchant/${id}`);
+  }
+};
+
+const goToProduct = (id: number) => {
+  router.push(`/product/${id}`);
+};
 
 // 用户信息初始化
 const rawUser = sessionStorage.getItem("user_user");
@@ -163,8 +314,17 @@ const fetchUserInfo = async () => {
   }
 };
 
+const favoriteSectionRef = ref<HTMLElement | null>(null);
+
 onMounted(() => {
   fetchUserInfo();
+  fetchFavorites();
+  // 如果 URL query 中有 tab=favorite，则自动滚动到收藏区域
+  if (route.query.tab === 'favorite') {
+    setTimeout(() => {
+      favoriteSectionRef.value?.scrollIntoView({ behavior: 'smooth' });
+    }, 500);
+  }
 });
 
 const toggleEdit = () => {
@@ -355,7 +515,76 @@ const submitPwd = async () => {
   color: var(--el-color-primary);
 }
 
-.security-section {
+.security-section, .favorite-section {
   margin-top: 40px;
+}
+
+.favorite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.favorite-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.favorite-item:hover {
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.favorite-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.favorite-img {
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.favorite-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.favorite-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #303133;
+}
+
+.favorite-desc {
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.favorite-time {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
 }
 </style>

@@ -52,7 +52,12 @@
         <div class="history-container">
           <el-tabs v-model="feedbackStatusTab">
             <el-tab-pane label="全部" name="all">
-              <el-empty v-if="!feedbackList.length && !loadingHistory" description="暂无反馈记录" />
+              <div v-if="!feedbackList.length && !loadingHistory" class="empty-state">
+                 <LottieAnimation path="https://assets9.lottiefiles.com/packages/lf20_s8pbrcfw.json" width="200px" height="200px">
+                   <el-empty description="暂无反馈记录" />
+                 </LottieAnimation>
+                 <p style="text-align: center; color: #909399; margin-top: -40px;">暂无反馈记录</p>
+              </div>
               <el-timeline v-else>
                 <el-timeline-item
                   v-for="(item, index) in feedbackList"
@@ -248,6 +253,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import request from '@/utils/request';
+import LottieAnimation from '@/components/LottieAnimation.vue';
 // @ts-ignore
 import { Picker, EmojiIndex } from 'emoji-mart-vue-fast/src';
 import 'emoji-mart-vue-fast/css/emoji-mart.css';
@@ -519,5 +525,12 @@ onMounted(() => {
 }
 .emoji-picker-wrapper :deep(.emoji-mart-anchor-bar) {
   background-color: #409EFF !important;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
 }
 </style>
