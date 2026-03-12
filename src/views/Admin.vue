@@ -342,6 +342,16 @@
               </template>
             </el-dialog>
           </div>
+          <div v-else-if="active === 'knowledge'" class="pane">
+            <el-alert title="知识库管理说明" type="info" description="在此处录入的文本将被向量化存储，用于AI客服回答用户问题时的知识检索。" show-icon style="margin-bottom: 20px;" />
+            <div class="form">
+              <v-md-editor v-model="knowledgeText" height="500px" placeholder="请输入知识库内容，例如退换货规则、常见问题解答等..."></v-md-editor>
+              <div class="actions" style="justify-content: flex-end;">
+                <el-button type="primary" @click="submitKnowledge" :loading="knowledgeLoading">导入知识库</el-button>
+                <el-button @click="knowledgeText = ''">清空</el-button>
+              </div>
+            </div>
+          </div>
           <div v-else-if="active === 'syslog'" class="pane">
             <div class="toolbar">
               <el-input v-model="logQuery.username" placeholder="用户名" style="width: 150px; margin-right: 8px;" clearable @clear="loadLogs" />
@@ -471,6 +481,7 @@ const actions = [
   { key: "user", title: "用户管理" },
   { key: "goods", title: "商品管理" },
   { key: "feedback", title: "反馈管理" },
+  { key: "knowledge", title: "知识库管理" },
   { key: "syslog", title: "系统日志" },
   { key: "profile", title: "个人中心" },
 ];
@@ -622,6 +633,45 @@ const feedbackDetailVisible = ref(false);
 const currentFeedback = ref<any>(null);
 const replyVisible = ref(false);
 const replyMsg = ref("");
+
+// 知识库管理
+const knowledgeText = ref("");
+const knowledgeLoading = ref(false);
+
+const submitKnowledge = async () => {
+  if (!knowledgeText.value.trim()) {
+    ElMessage.warning("请输入知识库内容");
+    return;
+  }
+  
+  knowledgeLoading.value = true;
+  try {
+    const params = new URLSearchParams();
+    params.append('message', knowledgeText.value);
+    
+    // 使用 post 调用 /chat/import 接口
+    const res: any = await request.post("/chat/import", params);
+    
+    // 后端返回字符串或对象，通常 axios 会解析 json，但如果后端返回纯字符串可能直接就是 "知识库导入成功"
+    // 或者 axios 配置了 responseType: 'json' 但后端返回 text/plain 可能会有问题，视 request.ts 配置而定
+    // 这里假设 request.ts 做了通用处理
+    
+    const ok = typeof res === 'string' 
+      ? res.includes("成功") 
+      : (res?.code === 200 || res?.success === true);
+      
+    if (ok) {
+      ElMessage.success("知识库导入成功");
+      knowledgeText.value = "";
+    } else {
+      ElMessage.error(typeof res === 'string' ? res : (res?.msg || "导入失败"));
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || "导入失败，请检查网络或后端服务");
+  } finally {
+    knowledgeLoading.value = false;
+  }
+};
 
 const loadFeedback = async () => {
   try {
