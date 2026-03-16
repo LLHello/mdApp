@@ -12,7 +12,13 @@
         <el-icon v-show="!animsLoaded.cart"><ShoppingCart /></el-icon>
       </div>
       <div class="label">购物车</div>
-      <span class="badge">25</span>
+      <span class="badge" v-if="cartCount > 0">{{ cartCount }}</span>
+    </button>
+    <button class="item" type="button" @click="go('/orders')" @mouseenter="playAnim('orders')" @mouseleave="stopAnim('orders')">
+      <div class="icon-wrap" ref="ordersIcon">
+        <el-icon v-show="!animsLoaded.orders"><List /></el-icon>
+      </div>
+      <div class="label">订单</div>
     </button>
     <button class="item" type="button" @click="go('/profile')" @mouseenter="playAnim('profile')" @mouseleave="stopAnim('profile')">
       <div class="icon-wrap" ref="profileIcon">
@@ -77,6 +83,8 @@ import { useRouter } from 'vue-router'
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { unreadCount } from '@/utils/notice'
 import request from '@/utils/request'
+import { formatMoney, pickGoodsPriceValue } from '@/utils/goods'
+import { cartList } from '@/api/cart'
 import lottie from 'lottie-web'
 import MarkdownIt from 'markdown-it'
 
@@ -87,17 +95,18 @@ const md = new MarkdownIt({
 })
 
 // Custom renderer to open links in new tab
-const defaultRender = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
+const defaultRender = md.renderer.rules.link_open || function(tokens, idx, options, _env, self) {
   return self.renderToken(tokens, idx, options);
 };
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  // Add target="_blank" to all links
-  const aIndex = tokens[idx].attrIndex('target');
+  const token = tokens[idx];
+  if (!token) return defaultRender(tokens, idx, options, env, self);
+  const aIndex = token.attrIndex('target');
   if (aIndex < 0) {
-    tokens[idx].attrPush(['target', '_blank']);
-  } else {
-    tokens[idx].attrs![aIndex][1] = '_blank';
+    token.attrPush(['target', '_blank']);
+  } else if (token.attrs?.[aIndex]) {
+    token.attrs[aIndex][1] = '_blank';
   }
   return defaultRender(tokens, idx, options, env, self);
 };
@@ -105,10 +114,13 @@ md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
 const router = useRouter()
 const go = (path: string) => router.push(path)
 const badgeCount = ref<number>(0)
+const cartCount = ref<number>(0)
+const cartCountLoading = ref(false)
 
 // Lottie refs
 const messagesIcon = ref<HTMLElement>()
 const cartIcon = ref<HTMLElement>()
+const ordersIcon = ref<HTMLElement>()
 const profileIcon = ref<HTMLElement>()
 const serviceIcon = ref<HTMLElement>()
 const feedbackIcon = ref<HTMLElement>()
@@ -121,7 +133,6 @@ const animsLoaded = ref<Record<string, boolean>>({})
 const favoriteTab = ref('merchant')
 const merchantFavorites = ref<any[]>([])
 const productFavorites = ref<any[]>([])
-const user = ref<any>(null)
 
 const getUid = () => {
   try {
@@ -186,10 +197,11 @@ const fetchFavorites = async () => {
              const pics = Array.isArray(gData.pic) ? gData.pic : String(gData.pic).split(',');
              pic = pics[0];
           }
+          const pv = pickGoodsPriceValue(gData);
           return {
             ...item,
             title: gData.title,
-            price: gData.price,
+            price: pv != null ? formatMoney(pv) : '',
             pic: pic
           };
         } catch {
@@ -216,6 +228,26 @@ const refreshBadge = () => {
   if (uid != null) badgeCount.value = unreadCount('user', uid)
 }
 const onNew = () => refreshBadge()
+
+const refreshCartCount = async () => {
+  const uid = getUid()
+  if (!uid || cartCountLoading.value) return
+  cartCountLoading.value = true
+  try {
+    const res: any = await cartList()
+    const ok = res?.code === 200 || res?.success === true
+    const data = ok ? res?.data : null
+    const list = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : Array.isArray(data?.items) ? data.items : []
+    const count = list.reduce((sum: number, it: any) => {
+      const q = Number(it?.quantity ?? it?.count ?? it?.num ?? 1) || 1
+      return sum + Math.max(1, q)
+    }, 0)
+    cartCount.value = Math.max(0, count)
+  } catch {}
+  cartCountLoading.value = false
+}
+
+const onCartChanged = () => refreshCartCount()
 
 const initLottie = (key: string, el: HTMLElement, path: string) => {
   if (!el) return
@@ -259,16 +291,18 @@ const playAnim = (key: string) => {
   }
 }
 
-const stopAnim = (key: string) => {
+const stopAnim = (_key: string) => {
   // Optional: anims[key]?.stop()
 }
 
 onMounted(() => {
   refreshBadge()
+  refreshCartCount()
   fetchFavorites()
   window.addEventListener('notice:new', onNew as any)
   window.addEventListener('notice:readall', onNew as any)
   window.addEventListener('notice:read', onNew as any)
+  window.addEventListener('cart:changed', onCartChanged as any)
 
   nextTick(() => {
     // 使用 Lottie 官方或一些免费的 JSON 资源
@@ -277,6 +311,8 @@ onMounted(() => {
     initLottie('messages', messagesIcon.value!, 'https://assets10.lottiefiles.com/packages/lf20_dvba73.json')
     // 购物车
     initLottie('cart', cartIcon.value!, 'https://assets9.lottiefiles.com/packages/lf20_3b15j9.json')
+    // 订单
+    initLottie('orders', ordersIcon.value!, 'https://assets2.lottiefiles.com/packages/lf20_yt7v8f.json')
     // 我的 (User)
     initLottie('profile', profileIcon.value!, 'https://assets2.lottiefiles.com/packages/lf20_lyp6w8.json')
     // 客服 (Headset)
@@ -292,6 +328,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('notice:new', onNew as any)
   window.removeEventListener('notice:readall', onNew as any)
   window.removeEventListener('notice:read', onNew as any)
+  window.removeEventListener('cart:changed', onCartChanged as any)
   Object.values(anims).forEach(anim => anim.destroy())
 })
 </script>

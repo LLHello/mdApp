@@ -243,6 +243,67 @@
               </div>
             </el-dialog>
           </div>
+          <div v-else-if="active === 'banner'" class="pane">
+            <div class="toolbar">
+              <el-button type="primary" @click="openAddBanner" :disabled="bannerList.length >= 3">添加轮播图（最多3个）</el-button>
+              <el-button @click="loadBannerList">刷新</el-button>
+            </div>
+            <el-empty v-if="bannerList.length === 0" description="暂无轮播图，请添加商品作为轮播" />
+            <el-table v-else :data="bannerList" style="width: 100%">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column label="商品图片" width="100">
+                <template #default="{ row }">
+                  <img :src="normalizeBannerPic(row.pic)" style="width:72px;height:72px;object-fit:cover;border-radius:4px;" />
+                </template>
+              </el-table-column>
+              <el-table-column prop="title" label="商品名称" />
+              <el-table-column prop="goodsId" label="商品ID" width="100" />
+              <el-table-column prop="sort" label="排序" width="120">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="row.sort"
+                    :min="0"
+                    :max="99"
+                    size="small"
+                    style="width:90px"
+                    @change="(val: number) => updateBannerSort(row, val)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="120">
+                <template #default="{ row }">
+                  <el-button type="danger" size="small" @click="deleteBanner(row)">移除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <el-dialog v-model="addBannerVisible" title="添加轮播图" width="480px">
+              <el-form :model="addBannerForm" label-width="90px">
+                <el-form-item label="选择商品">
+                  <el-select
+                    v-model="addBannerForm.goodsId"
+                    filterable
+                    placeholder="搜索或选择商品"
+                    style="width:100%"
+                  >
+                    <el-option
+                      v-for="g in bannerAllGoods"
+                      :key="g.id"
+                      :label="`[${g.id}] ${g.title}`"
+                      :value="g.id"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="排序">
+                  <el-input-number v-model="addBannerForm.sort" :min="0" :max="99" />
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="addBannerVisible = false">取消</el-button>
+                <el-button type="primary" @click="submitAddBanner">确认添加</el-button>
+              </template>
+            </el-dialog>
+          </div>
           <div v-else-if="active === 'feedback'" class="pane">
             <div class="toolbar" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
               <el-radio-group v-model="feedbackFilter" size="small">
@@ -342,6 +403,63 @@
               </template>
             </el-dialog>
           </div>
+          <div v-else-if="active === 'coupon'" class="pane">
+            <div class="toolbar">
+              <el-button type="primary" @click="openCreateCoupon">创建优惠券</el-button>
+              <el-button @click="loadCouponList">刷新</el-button>
+            </div>
+            <el-table :data="couponList" style="width: 100%" height="450">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="name" label="名称" />
+              <el-table-column prop="amount" label="金额" width="80" />
+              <el-table-column prop="minPoint" label="门槛" width="80" />
+              <el-table-column prop="count" label="总数" width="80" />
+              <el-table-column prop="perLimit" label="每人限领" width="100" />
+              <el-table-column label="有效期" width="320">
+                <template #default="{ row }">
+                  {{ formatTime(row.startTime) }} - {{ formatTime(row.endTime) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="150">
+                <template #default="{ row }">
+                  <el-button type="primary" size="small" @click="handlePreheat(row)">预热</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <el-dialog v-model="createCouponVisible" title="创建优惠券" width="500px">
+              <el-form :model="createCouponForm" label-width="100px">
+                <el-form-item label="名称">
+                  <el-input v-model="createCouponForm.name" />
+                </el-form-item>
+                <el-form-item label="金额">
+                  <el-input-number v-model="createCouponForm.amount" :min="1" />
+                </el-form-item>
+                <el-form-item label="使用门槛">
+                  <el-input-number v-model="createCouponForm.minPoint" :min="0" />
+                </el-form-item>
+                <el-form-item label="总数量">
+                  <el-input-number v-model="createCouponForm.count" :min="1" />
+                </el-form-item>
+                <el-form-item label="每人限领">
+                  <el-input-number v-model="createCouponForm.perLimit" :min="1" />
+                </el-form-item>
+                <el-form-item label="有效期">
+                  <el-date-picker
+                    v-model="createCouponDateRange"
+                    type="datetimerange"
+                    range-separator="至"
+                    start-placeholder="开始日期"
+                    end-placeholder="结束日期"
+                  />
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="createCouponVisible = false">取消</el-button>
+                <el-button type="primary" @click="submitCreateCoupon">创建</el-button>
+              </template>
+            </el-dialog>
+          </div>
           <div v-else-if="active === 'knowledge'" class="pane">
             <el-alert title="知识库管理说明" type="info" description="在此处录入的文本将被向量化存储，用于AI客服回答用户问题时的知识检索。" show-icon style="margin-bottom: 20px;" />
             <div class="form">
@@ -433,7 +551,9 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import request from "@/utils/request";
+import { couponList as fetchCoupons, couponCreate, couponPreheat } from '@/api/coupon';
 import { useRouter } from "vue-router";
+import { formatMoney, pickGoodsPriceValue } from "@/utils/goods";
 // @ts-ignore
 import { Picker, EmojiIndex } from 'emoji-mart-vue-fast/src';
 import 'emoji-mart-vue-fast/css/emoji-mart.css';
@@ -480,7 +600,9 @@ const actions = [
   { key: "notice", title: "公告推送" },
   { key: "user", title: "用户管理" },
   { key: "goods", title: "商品管理" },
+  { key: "banner", title: "轮播图管理" },
   { key: "feedback", title: "反馈管理" },
+  { key: "coupon", title: "优惠券管理" },
   { key: "knowledge", title: "知识库管理" },
   { key: "syslog", title: "系统日志" },
   { key: "profile", title: "个人中心" },
@@ -611,7 +733,9 @@ const toggleUserStatus = async (row: any) => {
 watch(active, (val) => {
   if (val === 'user') loadAllUsers();
   if (val === 'goods') loadCategories();
+  if (val === 'banner') { loadBannerList(); loadAllGoodsForBanner(); }
   if (val === 'feedback') loadFeedback();
+  if (val === 'coupon') loadCouponList();
   if (val === 'syslog') loadLogs();
 });
 
@@ -864,7 +988,13 @@ const loadGoodsByCategory = async (cid: any) => {
   try {
     const res: any = await request.get(`goods/categoryId/admin/${cid}`);
     const ok = res?.code === 200 || res?.success === true;
-    goodsList.value = ok && Array.isArray(res?.data) ? res.data : [];
+    goodsList.value =
+      ok && Array.isArray(res?.data)
+        ? res.data.map((g: any) => ({
+            ...g,
+            price: formatMoney(pickGoodsPriceValue(g)),
+          }))
+        : [];
   } catch {
     goodsList.value = [];
   }
@@ -874,7 +1004,13 @@ const loadTop15 = async () => {
   try {
     const res: any = await request.get("goods/top15");
     const ok = res?.code === 200 || res?.success === true;
-    topGoods.value = ok && Array.isArray(res?.data) ? res.data : [];
+    topGoods.value =
+      ok && Array.isArray(res?.data)
+        ? res.data.map((g: any) => ({
+            ...g,
+            price: formatMoney(pickGoodsPriceValue(g)),
+          }))
+        : [];
   } catch {
     topGoods.value = [];
   }
@@ -1079,6 +1215,217 @@ const submitProfile = async () => {
     ElMessage.success(res?.msg || "保存成功");
   } catch (e: any) {
     ElMessage.error(e?.message || "保存失败");
+  }
+};
+
+// -------- 轮播图管理 --------
+const bannerList = ref<any[]>([]);
+const bannerAllGoods = ref<any[]>([]); // 所有上架商品，用于下拉选
+const addBannerVisible = ref(false);
+const addBannerForm = ref({ goodsId: null as number | null, sort: 0 });
+
+const bannerBaseURL: string = (request as any)?.defaults?.baseURL ?? '';
+const normalizeBannerPic = (pic: string): string => {
+  if (!pic) return '';
+  const s = pic.trim().replace(/\\/g, '/');
+  if (s.startsWith('http') || s.startsWith('data:')) return s;
+  const uploadIdx = s.toLowerCase().lastIndexOf('/upload/');
+  const path = uploadIdx >= 0 ? s.slice(uploadIdx) : '/upload/' + s.split('/').pop();
+  const b = bannerBaseURL.endsWith('/') ? bannerBaseURL.slice(0, -1) : bannerBaseURL;
+  return (b + (path.startsWith('/') ? path : '/' + path)).replace(/([^:])\/\/+/g, '$1/');
+};
+
+const loadBannerList = async () => {
+  try {
+    const res: any = await request.get('banner/list');
+    const ok = res?.code === 200 || res?.success === true;
+    bannerList.value = ok && Array.isArray(res?.data) ? res.data : [];
+  } catch {
+    ElMessage.error('获取轮播图列表失败');
+  }
+};
+
+const loadAllGoodsForBanner = async () => {
+  if (bannerAllGoods.value.length > 0) return;
+  try {
+    // 遍历所有分类取商品，合并去重
+    const catRes: any = await request.get('goods/categoryList');
+    const catOk = catRes?.code === 200 || catRes?.success === true;
+    const cats: any[] = catOk && Array.isArray(catRes?.data) ? catRes.data : [];
+    const map = new Map<number, any>();
+    await Promise.all(
+      cats.map(async (c: any) => {
+        try {
+          const r: any = await request.get(`goods/categoryId/admin/${c.id}`);
+          const ok2 = r?.code === 200 || r?.success === true;
+          const list: any[] = ok2 && Array.isArray(r?.data) ? r.data : [];
+          list.forEach((g: any) => { if (g?.id) map.set(Number(g.id), g); });
+        } catch {}
+      })
+    );
+    bannerAllGoods.value = Array.from(map.values()).filter(
+      (g: any) => g.status === 1 && g.isShow === 1
+    );
+  } catch {
+    ElMessage.error('获取商品列表失败');
+  }
+};
+
+const openAddBanner = () => {
+  addBannerForm.value = { goodsId: null, sort: bannerList.value.length };
+  addBannerVisible.value = true;
+};
+
+const submitAddBanner = async () => {
+  if (!addBannerForm.value.goodsId) {
+    ElMessage.warning('请选择商品');
+    return;
+  }
+  try {
+    const res: any = await request.post('banner/add', null, {
+      params: { goodsId: addBannerForm.value.goodsId, sort: addBannerForm.value.sort }
+    });
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      ElMessage.success('添加成功');
+      addBannerVisible.value = false;
+      loadBannerList();
+    } else {
+      ElMessage.error(res?.msg || '添加失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '添加失败');
+  }
+};
+
+const deleteBanner = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确认将「${row.title}」从轮播图中移除？`, '提示', {
+      confirmButtonText: '移除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+  } catch { return; }
+  try {
+    const res: any = await request.delete(`banner/delete/${row.id}`);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      ElMessage.success('删除成功');
+      loadBannerList();
+    } else {
+      ElMessage.error(res?.msg || '删除失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败');
+  }
+};
+
+const updateBannerSort = async (row: any, sort: number) => {
+  try {
+    const res: any = await request.put('banner/sort', null, {
+      params: { id: row.id, sort }
+    });
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      row.sort = sort;
+      ElMessage.success('排序已更新');
+      loadBannerList();
+    } else {
+      ElMessage.error(res?.msg || '更新失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新失败');
+  }
+};
+
+// Coupon Management
+const couponList = ref<any[]>([]);
+const createCouponVisible = ref(false);
+const createCouponForm = ref({
+  name: '',
+  amount: 10,
+  minPoint: 100,
+  count: 100,
+  perLimit: 1,
+  startTime: '',
+  endTime: ''
+});
+const createCouponDateRange = ref<[Date, Date] | null>(null);
+
+const loadCouponList = async () => {
+  try {
+    const res: any = await fetchCoupons();
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      couponList.value = res.data || [];
+    } else {
+      ElMessage.error(res?.msg || '获取优惠券列表失败');
+    }
+  } catch (e: any) {
+    ElMessage.error('获取优惠券列表失败');
+  }
+};
+
+const openCreateCoupon = () => {
+  createCouponForm.value = {
+    name: '',
+    amount: 10,
+    minPoint: 100,
+    count: 100,
+    perLimit: 1,
+    startTime: '',
+    endTime: ''
+  };
+  createCouponDateRange.value = null;
+  createCouponVisible.value = true;
+};
+
+const submitCreateCoupon = async () => {
+  if (!createCouponForm.value.name) {
+    ElMessage.warning('请输入名称');
+    return;
+  }
+  if (!createCouponDateRange.value) {
+    ElMessage.warning('请选择有效期');
+    return;
+  }
+  
+  try {
+    const [start, end] = createCouponDateRange.value;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const format = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    
+    const payload = {
+      ...createCouponForm.value,
+      startTime: format(start),
+      endTime: format(end)
+    };
+
+    const res: any = await couponCreate(payload);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      ElMessage.success('创建成功');
+      createCouponVisible.value = false;
+      loadCouponList();
+    } else {
+      ElMessage.error(res?.msg || '创建失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '创建失败');
+  }
+};
+
+const handlePreheat = async (row: any) => {
+  try {
+    const res: any = await couponPreheat(row.id);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      ElMessage.success('预热成功');
+    } else {
+      ElMessage.error(res?.msg || '预热失败');
+    }
+  } catch (e: any) {
+    ElMessage.error('预热失败');
   }
 };
 

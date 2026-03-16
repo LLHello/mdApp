@@ -21,12 +21,20 @@
 
       <!-- 中：轮播图 -->
       <section class="center">
-        <el-carousel height="100%" indicator-position="outside">
-          <el-carousel-item v-for="src in carouselImages" :key="src">
-            <div class="slide">
-              <img :src="src" alt="carousel image" />
+        <el-carousel height="100%" indicator-position="outside" :autoplay="true" :interval="4000">
+          <el-carousel-item v-for="item in bannerList" :key="item.id">
+            <div class="slide" @click="goProduct(item.goodsId)" style="cursor: pointer">
+              <img :src="normalizePic(item.pic)" :alt="item.title" />
             </div>
           </el-carousel-item>
+          <!-- 没有配置轮播图时回退到本地图片 -->
+          <template v-if="bannerList.length === 0">
+            <el-carousel-item v-for="src in fallbackImages" :key="src">
+              <div class="slide">
+                <img :src="src" alt="carousel image" />
+              </div>
+            </el-carousel-item>
+          </template>
         </el-carousel>
       </section>
 
@@ -60,7 +68,10 @@
 
 <script setup lang="ts" name="Body">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { useRouter } from "vue-router";
 import request from "@/utils/request";
+
+const router = useRouter();
 
 const isLoggedIn = ref(false);
 const user = ref<any>(null);
@@ -98,6 +109,7 @@ const updateState = () => {
   isLoggedIn.value = token && roleOk;
 };
 
+// -------- 热门商品 --------
 const hotProducts = ref<Array<{ id: number | null; title: string }>>([]);
 
 const fetchHotProducts = async () => {
@@ -106,12 +118,12 @@ const fetchHotProducts = async () => {
     const ok = res?.code === 200 || res?.success === true;
     if (ok && Array.isArray(res?.data)) {
       const arr: Array<{ id: number | null; title: string }> = res.data
-        .slice(0, 10)
+        .slice(0, 11)
         .map((x: any) => {
           const id =
             x?.id ?? x?.goodId ?? x?.goodsId ?? x?.productId ?? x?.gid ?? null;
-            const title =
-              x?.title ?? x?.name ?? x?.goodsName ?? x?.productName ?? "";
+          const title =
+            x?.title ?? x?.name ?? x?.goodsName ?? x?.productName ?? "";
           return {
             id: id != null && !isNaN(Number(id)) ? Number(id) : null,
             title: String(title || ""),
@@ -132,29 +144,70 @@ const fetchHotProducts = async () => {
       return;
     }
   } catch {}
-  // Fallback data
   hotProducts.value = Array.from({ length: 15 }).map((_, i) => ({
     id: null,
     title: `热门商品 ${i + 1}`,
   }));
 };
 
+// -------- 轮播图 --------
+interface BannerItem {
+  id: number;
+  goodsId: number;
+  title: string;
+  pic: string;
+  sort: number;
+  isActive: number;
+}
+
+const bannerList = ref<BannerItem[]>([]);
+const fallbackImages = [
+  "/carouseImg/1.jpg",
+  "/carouseImg/2.jpg",
+  "/carouseImg/3.jpg",
+  "/carouseImg/4.jpg",
+];
+
+const baseURL: string = (request as any)?.defaults?.baseURL ?? "";
+
+const normalizePic = (pic: string): string => {
+  if (!pic) return "";
+  const s = pic.trim().replace(/\\/g, "/");
+  if (s.startsWith("http") || s.startsWith("data:")) return s;
+  const uploadIdx = s.toLowerCase().lastIndexOf("/upload/");
+  const path = uploadIdx >= 0 ? s.slice(uploadIdx) : "/upload/" + s.split("/").pop();
+  const b = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
+  return (b + (path.startsWith("/") ? path : "/" + path)).replace(/([^:])\/\/+/g, "$1/");
+};
+
+const fetchBanners = async () => {
+  try {
+    const res: any = await request.get("banner/active");
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok && Array.isArray(res?.data) && res.data.length > 0) {
+      bannerList.value = res.data;
+    }
+  } catch {
+    // 接口失败时展示本地兜底图
+  }
+};
+
+const goProduct = (goodsId: number) => {
+  if (goodsId) {
+    router.push(`/product/${goodsId}`);
+  }
+};
+
 onMounted(() => {
   window.addEventListener("userstatechange", updateState);
   updateState();
   fetchHotProducts();
+  fetchBanners();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("userstatechange", updateState);
 });
-
-const carouselImages = ref<string[]>([
-  "/carouseImg/1.jpg",
-  "/carouseImg/2.jpg",
-  "/carouseImg/3.jpg",
-  "/carouseImg/4.jpg",
-]);
 </script>
 
 <style scoped>
@@ -236,7 +289,7 @@ const carouselImages = ref<string[]>([
 }
 .rank-list li::after {
   content: "";
-  width: 22px; /* mirror rank width to keep title centered */
+  width: 22px;
 }
 .rank-list li:last-child {
   border-bottom: none;

@@ -33,6 +33,12 @@ const routes: Array<RouteRecordRaw> = [
     meta: { roles: [0] }
   },
   {
+    path: '/coupon',
+    name: 'Coupon',
+    component: () => import('../views/Coupon.vue'),
+    meta: { roles: [0] } // Assuming normal users can access
+  },
+  {
     path: '/search',
     name: 'Search',
     component: () => import('../views/Search.vue'),
@@ -42,6 +48,18 @@ const routes: Array<RouteRecordRaw> = [
     path: '/cart',
     name: 'Cart',
     component: () => import('../views/Cart.vue'),
+    meta: { requiresAuth: true, roles: [0] }
+  },
+  {
+    path: '/orders',
+    name: 'Orders',
+    component: () => import('../views/Orders.vue'),
+    meta: { requiresAuth: true, roles: [0] }
+  },
+  {
+    path: '/orders/:id',
+    name: 'OrderDetail',
+    component: () => import('../views/OrderDetail.vue'),
     meta: { requiresAuth: true, roles: [0] }
   },
   {
@@ -93,14 +111,14 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const metaAny = to.matched.find(r => r.meta)?.meta as any
   const requiredRoles: number[] | undefined = metaAny?.roles
   const requiresAuth: boolean = to.matched.some(r => r.meta && (r.meta as any).requiresAuth)
   const rolePrefix = (role: number) => (role === 1 ? 'merchant' : role === 2 ? 'admin' : 'user')
   if (requiresAuth || requiredRoles) {
     // Determine expected role for this route; default user when not specified
-    const expectedRole = requiredRoles && requiredRoles.length ? requiredRoles[0] : 0
+    const expectedRole = requiredRoles?.[0] ?? 0
     const prefix = rolePrefix(expectedRole)
     // Check if logged in via sessionStorage; if not, check localStorage and sync
     let isLoggedForRole = sessionStorage.getItem(`${prefix}_isLoggedIn`) === '1'

@@ -42,6 +42,7 @@
 <script setup lang="ts" name="Footer">
 import { ref, onMounted } from "vue";
 import request from "@/utils/request";
+import { pickGoodsPriceValue } from "@/utils/goods";
 
 const categories = ref<{ id: number; name: string }[]>([]);
 const activeCategory = ref<number>(0);
@@ -120,7 +121,7 @@ const fetchGoods = async (categoryId: number) => {
         return {
           id: item.id,
           title: item.title,
-          price: Number(item.price) || 0,
+          price: pickGoodsPriceValue(item) ?? 0,
           image: imgUrl,
         };
       });

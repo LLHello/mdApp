@@ -1,13 +1,13 @@
 import axios from 'axios'
 
-const request = axios.create({
+const request: any = axios.create({
   baseURL: '/api', // 使用代理，解决跨域问题
   timeout: 120000 // AI 接口响应较慢，延长超时时间到 2 分钟
 })
 
 // 请求拦截器
 request.interceptors.request.use(
-  config => {
+  (config: any) => {
     // 在发送请求之前做些什么
     let token = null
     const path = window.location.pathname
@@ -36,7 +36,7 @@ request.interceptors.request.use(
     }
     return config
   },
-  error => {
+  (error: any) => {
     // 对请求错误做些什么
     return Promise.reject(error)
   }
@@ -44,11 +44,11 @@ request.interceptors.request.use(
 
 // 响应拦截器
 request.interceptors.response.use(
-  response => {
+  (response: any) => {
     // 对响应数据做点什么
     return response.data
   },
-  error => {
+  (error: any) => {
     // 对响应错误做点什么
     const res = error.response
     const isTokenError = res && (

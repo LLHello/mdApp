@@ -63,9 +63,9 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Star, StarFilled } from '@element-plus/icons-vue';
 import request from '@/utils/request';
 import LottieAnimation from '@/components/LottieAnimation.vue';
+import { formatMoney, pickGoodsPriceValue } from '@/utils/goods';
 
 const route = useRoute();
 const router = useRouter();
@@ -154,7 +154,7 @@ const fetchMerchantProducts = async () => {
         return {
           ...p,
           pic: picList,
-          price: Number(p.price).toFixed(2)
+          price: formatMoney(pickGoodsPriceValue(p))
         };
       });
     }

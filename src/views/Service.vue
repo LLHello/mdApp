@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts" name="Service">
-import { ref, nextTick, onMounted, computed } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 import { Headset, Plus, Position } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 
@@ -74,16 +74,18 @@ const md = new MarkdownIt({
 })
 
 // Custom renderer to open links in new tab
-const defaultRender = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
+const defaultRender = md.renderer.rules.link_open || function(tokens, idx, options, _env, self) {
   return self.renderToken(tokens, idx, options);
 };
 
 md.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-  const aIndex = tokens[idx].attrIndex('target');
+  const token = tokens[idx];
+  if (!token) return defaultRender(tokens, idx, options, env, self);
+  const aIndex = token.attrIndex('target');
   if (aIndex < 0) {
-    tokens[idx].attrPush(['target', '_blank']);
-  } else {
-    tokens[idx].attrs![aIndex][1] = '_blank';
+    token.attrPush(['target', '_blank']);
+  } else if (token.attrs?.[aIndex]) {
+    token.attrs[aIndex][1] = '_blank';
   }
   return defaultRender(tokens, idx, options, env, self);
 };
@@ -163,7 +165,9 @@ const sendMessage = async () => {
         if (done) break
         
         const chunk = decoder.decode(value, { stream: true })
-        messages.value[aiMsgIndex].content += chunk
+        if (messages.value[aiMsgIndex]) {
+          messages.value[aiMsgIndex].content += chunk
+        }
         scrollToBottom()
       }
     }
@@ -178,10 +182,12 @@ const sendMessage = async () => {
       errorMsg = "后端服务内部错误 (500)，请检查后端日志。"
     }
     
-    if (messages.value[aiMsgIndex].content) {
-      messages.value[aiMsgIndex].content += `\n\n[系统提示: ${errorMsg}]`
-    } else {
-      messages.value[aiMsgIndex].content = errorMsg
+    if (messages.value[aiMsgIndex]) {
+      if (messages.value[aiMsgIndex].content) {
+        messages.value[aiMsgIndex].content += `\n\n[系统提示: ${errorMsg}]`
+      } else {
+        messages.value[aiMsgIndex].content = errorMsg
+      }
     }
   } finally {
     chatLoading.value = false

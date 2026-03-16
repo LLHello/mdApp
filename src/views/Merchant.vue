@@ -250,6 +250,163 @@
               </el-table-column>
             </el-table>
           </div>
+          <div v-else-if="active === 'comments'" class="pane">
+            <div class="comments-layout">
+              <!-- 左侧：商品列表 -->
+              <aside class="comments-goods-list">
+                <div class="comments-goods-title">选择商品</div>
+                <el-table
+                  :data="products"
+                  height="520"
+                  highlight-current-row
+                  @row-click="selectProductForComments"
+                  :row-class-name="({ row }: any) => row.id === commentGoodsId ? 'selected-row' : ''"
+                >
+                  <el-table-column prop="title" label="商品名称" />
+                </el-table>
+              </aside>
+              <!-- 右侧：评论列表 -->
+              <section class="comments-detail">
+                <div v-if="commentGoodsId">
+                  <div class="comments-panel-title">
+                    评论列表 —
+                    <span class="goods-name-tag">{{ commentGoodsTitle }}</span>
+                  </div>
+                  <div v-if="merchantComments.length === 0 && !commentsLoading" class="no-comments">
+                    暂无评论
+                  </div>
+                  <div v-if="commentsLoading" class="comments-loading">加载中...</div>
+                  <div
+                    v-for="item in merchantComments"
+                    :key="item.id"
+                    class="mc-item"
+                  >
+                    <!-- 一级评论 -->
+                    <div class="mc-comment mc-lv1">
+                      <div class="mc-left">
+                        <span class="mc-name">{{ item.username || '匿名用户' }}</span>
+                        <el-rate :model-value="item.rating" disabled size="small" v-if="item.rating" />
+                        <span class="mc-time">{{ item.createTime }}</span>
+                      </div>
+                      <div class="mc-content">{{ item.content }}</div>
+                      <!-- 商家回复按钮 -->
+                      <div class="mc-actions">
+                        <span class="mc-reply-btn" @click="openMerchantReply(item)">回复</span>
+                      </div>
+                      <transition name="mc-slide">
+                        <div class="mc-reply-input" v-if="merchantReplyTarget && merchantReplyTarget.id === item.id && !merchantReplyTarget.subId">
+                          <el-input
+                            v-model="merchantReplyContent"
+                            type="textarea"
+                            :rows="2"
+                            :placeholder="`回复 @${item.username || '用户'}...`"
+                            maxlength="200"
+                            show-word-limit
+                            resize="none"
+                          />
+                          <div class="mc-reply-actions">
+                            <el-button size="small" @click="cancelMerchantReply">取消</el-button>
+                            <el-button type="primary" size="small" :loading="merchantReplySubmitting" @click="submitMerchantReply(item, null)">回复</el-button>
+                          </div>
+                        </div>
+                      </transition>
+                    </div>
+                    <!-- 二级评论 -->
+                    <div class="mc-replies" v-if="item.replies && item.replies.length">
+                      <div v-for="reply in item.replies" :key="reply.id" class="mc-comment mc-lv2">
+                        <div class="mc-left">
+                          <span class="mc-name">{{ reply.username || '匿名用户' }}</span>
+                          <span class="mc-reply-to" v-if="reply.replyToUsername">回复 <em>@{{ reply.replyToUsername }}</em></span>
+                          <span class="mc-time">{{ reply.createTime }}</span>
+                        </div>
+                        <div class="mc-content">{{ reply.content }}</div>
+                        <div class="mc-actions">
+                          <span class="mc-reply-btn" @click="openMerchantReply(item, reply)">回复</span>
+                        </div>
+                        <transition name="mc-slide">
+                          <div class="mc-reply-input" v-if="merchantReplyTarget && merchantReplyTarget.subId === reply.id">
+                            <el-input
+                              v-model="merchantReplyContent"
+                              type="textarea"
+                              :rows="2"
+                              :placeholder="`回复 @${reply.username || '用户'}...`"
+                              maxlength="200"
+                              show-word-limit
+                              resize="none"
+                            />
+                            <div class="mc-reply-actions">
+                              <el-button size="small" @click="cancelMerchantReply">取消</el-button>
+                              <el-button type="primary" size="small" :loading="merchantReplySubmitting" @click="submitMerchantReply(item, reply)">回复</el-button>
+                            </div>
+                          </div>
+                        </transition>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <el-empty v-else description="请在左侧选择商品查看评论" />
+              </section>
+            </div>
+          </div>
+          <div v-else-if="active === 'coupon'" class="pane">
+            <el-form :model="couponForm" label-width="100px" style="max-width:560px">
+              <el-form-item label="绑定商品">
+                <el-select
+                  v-model="couponForm.goodsId"
+                  placeholder="全场通用（不绑定商品）"
+                  clearable
+                  style="width:100%"
+                  @focus="fetchMerchantGoods"
+                >
+                  <el-option
+                    v-for="p in products"
+                    :key="p.id"
+                    :label="p.title"
+                    :value="p.id"
+                  />
+                </el-select>
+                <div class="form-hint">不选则为全场通用券</div>
+              </el-form-item>
+              <el-form-item label="券名称">
+                <el-input v-model="couponForm.name" placeholder="例：新人专享券" />
+              </el-form-item>
+              <el-form-item label="优惠金额">
+                <el-input v-model="couponForm.discountAmount" type="number" placeholder="减免金额（元）">
+                  <template #prepend>¥</template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="使用门槛">
+                <el-input v-model="couponForm.thresholdAmount" type="number" placeholder="0 = 无门槛">
+                  <template #prepend>满</template>
+                  <template #append>元可用</template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="发放数量">
+                <el-input v-model="couponForm.totalStock" type="number" placeholder="总库存数量" />
+              </el-form-item>
+              <el-form-item label="开始时间">
+                <el-date-picker
+                  v-model="couponForm.startTime"
+                  type="datetime"
+                  placeholder="不填则立即生效"
+                  value-format="YYYY-MM-DDTHH:mm:ss"
+                  style="width:100%"
+                />
+              </el-form-item>
+              <el-form-item label="结束时间">
+                <el-date-picker
+                  v-model="couponForm.endTime"
+                  type="datetime"
+                  placeholder="不填则长期有效"
+                  value-format="YYYY-MM-DDTHH:mm:ss"
+                  style="width:100%"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="danger" :loading="couponSubmitting" @click="submitCoupon">发布优惠券</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
           <div v-else-if="active === 'messages'" class="pane">
             <el-tabs v-model="msgTab">
               <el-tab-pane label="公告" name="notice">
@@ -272,7 +429,7 @@
                 </el-timeline>
               </el-tab-pane>
               <el-tab-pane label="聊天" name="chat">
-                <el-empty description="聊天功能筹备中" />
+                <ChatCenter storage-prefix="merchant" />
               </el-tab-pane>
             </el-tabs>
           </div>
@@ -373,6 +530,10 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import request from "@/utils/request";
 import { useRouter } from "vue-router";
 import { initNoticeSocketForMerchant, listNotices, listUnread, markRead, unreadCount, syncNotices } from "@/utils/notice";
+import { formatMoney, pickGoodsPriceValue } from "@/utils/goods";
+import { couponCreate } from "@/api/coupon";
+import ChatCenter from "@/components/ChatCenter.vue";
+import GoodsComment from "@/components/GoodsComment.vue";
 
 const raw = sessionStorage.getItem("merchant_user");
 const user = ref<any>(raw ? JSON.parse(raw) : null);
@@ -407,6 +568,8 @@ const avatarUrl = computed(() => normalizeAvatar(getAvatarPath(user.value)));
 const actions = [
   { key: "publish", title: "商品发布" },
   { key: "edit", title: "商品管理" },
+  { key: "comments", title: "商品评论" },
+  { key: "coupon", title: "发布优惠券" },
   { key: "messages", title: "消息中心" },
   { key: "profile", title: "个人信息" },
 ];
@@ -417,6 +580,47 @@ const paneTitle = computed(
 
 const isDirty = ref(false);
 const isLoading = ref(false);
+
+// ---- 发布优惠券 ----
+const couponForm = ref({
+  goodsId: null as number | null,
+  name: '',
+  discountAmount: '',
+  thresholdAmount: '',
+  totalStock: '',
+  startTime: '',
+  endTime: '',
+});
+const couponSubmitting = ref(false);
+const submitCoupon = async () => {
+  if (!couponForm.value.name || !couponForm.value.discountAmount || !couponForm.value.totalStock) {
+    ElMessage.error('请完善优惠券名称、优惠金额和库存');
+    return;
+  }
+  couponSubmitting.value = true;
+  try {
+    const payload: any = {
+      name: couponForm.value.name,
+      goodsId: couponForm.value.goodsId || null,
+      discountAmount: Number(couponForm.value.discountAmount),
+      thresholdAmount: Number(couponForm.value.thresholdAmount || 0),
+      totalStock: Number(couponForm.value.totalStock),
+      availableStock: Number(couponForm.value.totalStock),
+      startTime: couponForm.value.startTime || null,
+      endTime: couponForm.value.endTime || null,
+      status: 1,
+    };
+    const res: any = await couponCreate(payload);
+    const ok = res?.code === 200 || res?.success === true;
+    if (!ok) { ElMessage.error(res?.msg || '发布失败'); return; }
+    ElMessage.success('优惠券发布成功，已自动预热！');
+    couponForm.value = { goodsId: null, name: '', discountAmount: '', thresholdAmount: '', totalStock: '', startTime: '', endTime: '' };
+  } catch (e: any) {
+    ElMessage.error(e?.message || '发布失败');
+  } finally {
+    couponSubmitting.value = false;
+  }
+};
 
 const switchTab = async (key: string) => {
   if (active.value === key) return;
@@ -484,7 +688,7 @@ const products = ref<
     pic: ["/carouseImg/" + ((i % 4) + 1) + ".jpg"],
     title: `示例商品 ${i + 1}`,
     price: (Math.round((Math.random() * 90 + 10) * 100) / 100).toFixed(2),
-    isShow: [1, 0, 2][i % 3],
+    isShow: ([1, 0, 2][i % 3] ?? 1),
     des: `这是示例商品 ${i + 1} 的描述信息`,
     status: 1,
   }))
@@ -517,7 +721,7 @@ const fetchMerchantGoods = async () => {
           categoryId: Number(p.categoryId),
           pic: picList,
           title: String(p.title),
-          price: Number(p.price).toFixed(2),
+          price: formatMoney(pickGoodsPriceValue(p)),
           isShow: Number(p.isShow),
           des: String(p.des || ""),
         };
@@ -529,6 +733,76 @@ const fetchMerchantGoods = async () => {
 };
 
 const fansCount = ref(0);
+
+// ---- 商品评论（商家视图）----
+const commentGoodsId = ref<number | null>(null);
+const commentGoodsTitle = ref('');
+const merchantComments = ref<any[]>([]);
+const commentsLoading = ref(false);
+const merchantReplyTarget = ref<{ id: number; subId?: number; replyToUserId?: number } | null>(null);
+const merchantReplyContent = ref('');
+const merchantReplySubmitting = ref(false);
+
+const selectProductForComments = async (row: any) => {
+  commentGoodsId.value = row.id;
+  commentGoodsTitle.value = row.title;
+  commentsLoading.value = true;
+  merchantComments.value = [];
+  try {
+    const res: any = await request.get(`comment/merchantList/${row.id}`);
+    if (res?.code === 200 || res?.success === true) {
+      merchantComments.value = res.data || [];
+    }
+  } catch (e) {
+    console.error('fetch merchant comments failed', e);
+  } finally {
+    commentsLoading.value = false;
+  }
+};
+
+const openMerchantReply = (parent: any, sub?: any) => {
+  if (sub) {
+    merchantReplyTarget.value = { id: parent.id, subId: sub.id, replyToUserId: sub.userId };
+  } else {
+    merchantReplyTarget.value = { id: parent.id, replyToUserId: parent.userId };
+  }
+  merchantReplyContent.value = '';
+};
+
+const cancelMerchantReply = () => {
+  merchantReplyTarget.value = null;
+  merchantReplyContent.value = '';
+};
+
+const submitMerchantReply = async (parent: any, sub: any) => {
+  if (!merchantReplyContent.value.trim()) {
+    ElMessage.warning('请输入回复内容');
+    return;
+  }
+  if (!merchantReplyTarget.value || !commentGoodsId.value) return;
+  merchantReplySubmitting.value = true;
+  try {
+    const res: any = await request.post('comment/merchantReply', {
+      goodsId: commentGoodsId.value,
+      parentId: parent.id,
+      replyToUserId: merchantReplyTarget.value.replyToUserId,
+      content: merchantReplyContent.value.trim(),
+    });
+    if (res?.code === 200 || res?.success === true) {
+      ElMessage.success('回复成功！');
+      cancelMerchantReply();
+      // 刷新评论
+      await selectProductForComments({ id: commentGoodsId.value, title: commentGoodsTitle.value });
+    } else {
+      ElMessage.error(res?.msg || '回复失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '回复失败');
+  } finally {
+    merchantReplySubmitting.value = false;
+  }
+};
+
 const fetchFansCount = async () => {
   const mid = getMid();
   if (!mid) return;
@@ -554,7 +828,7 @@ const fetchFansCount = async () => {
 };
 
 watch(active, (val) => {
-  if (val === "edit" || val === "shelf") {
+  if (val === "edit" || val === "shelf" || val === "comments") {
     fetchMerchantGoods();
   } else if (val === "profile") {
     fetchFansCount();
@@ -1064,7 +1338,6 @@ const onUserMenu = async (cmd: string) => {
 };
 const onAvatarChange = async (file: any) => {
   if (!file?.raw) return;
-  const uid = user.value?.id ?? user.value?.userId ?? user.value?.uid;
   try {
     // 上传文件大小限制
     if (file.size > 10 * 1024 * 1024) {
@@ -1394,6 +1667,112 @@ const submitPwd = async () => {
   font-size: 10px;
   opacity: 0.8;
 }
+.form-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+/* ---- 商品评论面板 ---- */
+.comments-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+  min-height: 520px;
+}
+.comments-goods-list {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.comments-goods-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+}
+.comments-detail {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-y: auto;
+  max-height: 580px;
+}
+.comments-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #f0f0f0;
+}
+.goods-name-tag {
+  color: var(--jd-red, #e1251b);
+  font-weight: 600;
+}
+.no-comments {
+  color: #aaa;
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
+}
+.comments-loading {
+  color: #aaa;
+  text-align: center;
+  padding: 24px 0;
+  font-size: 13px;
+}
+.mc-item {
+  border-bottom: 1px solid #f5f5f5;
+  padding: 12px 0;
+}
+.mc-item:last-child { border-bottom: none; }
+.mc-comment { display: flex; flex-direction: column; gap: 4px; }
+.mc-lv1 { margin-bottom: 4px; }
+.mc-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.mc-name { font-size: 13px; font-weight: 600; color: #303133; }
+.mc-time { font-size: 12px; color: #bbb; margin-left: auto; }
+.mc-content { font-size: 14px; color: #444; line-height: 1.6; word-break: break-all; }
+.mc-actions { margin-top: 4px; }
+.mc-reply-btn {
+  font-size: 12px; color: #999; cursor: pointer;
+  padding: 2px 6px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.mc-reply-btn:hover { color: var(--jd-red, #e1251b); background: #fff0f0; }
+.mc-reply-input {
+  margin-top: 8px; background: #f9f9f9;
+  border-radius: 6px; padding: 10px;
+}
+.mc-reply-actions {
+  display: flex; justify-content: flex-end;
+  gap: 8px; margin-top: 8px;
+}
+.mc-replies {
+  margin-top: 8px;
+  margin-left: 16px;
+  background: #f9f9f9;
+  border-left: 3px solid #eee;
+  border-radius: 0 6px 6px 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mc-reply-to { font-size: 12px; color: #aaa; }
+.mc-reply-to em { color: var(--jd-red, #e1251b); font-style: normal; }
+.mc-lv2 { font-size: 13px; }
+.mc-slide-enter-active, .mc-slide-leave-active { transition: all 0.2s ease; overflow: hidden; }
+.mc-slide-enter-from, .mc-slide-leave-to { opacity: 0; max-height: 0; }
+.mc-slide-enter-to, .mc-slide-leave-from { opacity: 1; max-height: 300px; }
+:deep(.selected-row) { background-color: #fff0f0 !important; }
 .pic-list {
   display: flex;
   flex-wrap: wrap;

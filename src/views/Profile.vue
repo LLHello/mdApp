@@ -131,7 +131,7 @@
 
 <script setup lang="ts" name="Profile">
 import { ref, computed, onMounted } from "vue";
-import { Plus, Delete } from "@element-plus/icons-vue";
+import { Plus } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import request from "@/utils/request";
 import { useRoute, useRouter } from "vue-router";

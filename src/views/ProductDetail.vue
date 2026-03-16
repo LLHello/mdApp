@@ -45,12 +45,60 @@
             <span class="merchant-name">{{ merchantName || "商家" }}</span>
             <el-icon class="arrow-icon"><ArrowRight /></el-icon>
           </div>
-          <div class="price">￥{{ Number(product.price).toFixed(2) }}</div>
+          <div class="price">￥{{ displayPriceText }}</div>
+          <div class="sku-section" v-if="skuOptions.length">
+            <div class="sku-row">
+              <span class="sku-label">规格：</span>
+              <el-radio-group v-model="selectedSkuId" class="sku-radio-group">
+                <el-radio-button
+                  v-for="s in skuOptions"
+                  :key="s.skuId"
+                  :label="s.skuId"
+                  :disabled="s.disabled"
+                >
+                  {{ s.label }}
+                </el-radio-button>
+              </el-radio-group>
+            </div>
+            <div class="sku-meta" v-if="selectedSku">
+              <span class="sku-meta-item">库存：{{ selectedSku.stock ?? 0 }}</span>
+              <span class="sku-meta-item" v-if="selectedSku.saleCount != null"
+                >销量：{{ selectedSku.saleCount }}</span
+              >
+            </div>
+          </div>
+          <!-- 商品优惠券区域 -->
+          <div class="coupon-section" v-if="goodsCoupons.length">
+            <div class="coupon-label">优惠券：</div>
+            <div class="coupon-tags">
+              <div
+                v-for="c in goodsCoupons"
+                :key="c.id"
+                class="coupon-tag"
+              >
+                <span class="coupon-tag-text">减¥{{ c.discountAmount }} 满{{ c.thresholdAmount }}可用</span>
+                <el-button
+                  type="danger"
+                  size="small"
+                  :loading="claimingId === c.id"
+                  @click="handleClaimCoupon(c)"
+                >领取</el-button>
+              </div>
+            </div>
+          </div>
           <div class="desc-label">商品描述：</div>
           <div class="desc">{{ product.des || "暂无描述" }}</div>
           <div class="actions">
             <el-button type="primary" size="large" @click="handleBuy">立即购买</el-button>
             <el-button type="warning" size="large" plain @click="addToCart">加入购物车</el-button>
+            <el-button 
+              type="info" 
+              size="large" 
+              plain 
+              @click="goChat"
+            >
+              联系客服
+            </el-button>
             <el-button 
               type="danger" 
               size="large" 
@@ -65,6 +113,8 @@
         </div>
       </div>
       <el-empty v-else description="加载中..." />
+      <!-- 评论区：放在商品详情下方 -->
+      <GoodsComment v-if="product" :goods-id="Number(route.params.id)" />
     </el-card>
   </div>
 </template>
@@ -73,8 +123,13 @@
 import { ref, onMounted, watch, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from 'element-plus';
-import { Star, StarFilled, ArrowRight } from '@element-plus/icons-vue';
+import { ArrowRight } from '@element-plus/icons-vue';
 import request from "@/utils/request";
+import { formatMoney, parseSkuAttrs, pickGoodsPriceValue, pickSkuPriceValue, skuAttrsToLabel } from "@/utils/goods";
+import { cartAdd } from "@/api/cart";
+import { dispatchCartChanged } from "@/utils/cartEvents";
+import { couponsByGoods, couponSeckill, type Coupon } from "@/api/coupon";
+import GoodsComment from "@/components/GoodsComment.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -89,6 +144,59 @@ const merchantAvatar = ref<string>("");
 const merchantId = ref<number | null>(null);
 const isFavorite = ref(false);
 const favoriteLoading = ref(false);
+
+// ---- 商品优惠券 ----
+const goodsCoupons = ref<Coupon[]>([]);
+const fetchGoodsCoupons = async (goodsId: number) => {
+  try {
+    const res: any = await couponsByGoods(goodsId);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) goodsCoupons.value = res.data || [];
+  } catch {}
+};
+const claimingId = ref<number | null>(null);
+const handleClaimCoupon = async (coupon: Coupon) => {
+  if (!userInfo.value) { ElMessage.warning('请先登录'); router.push('/login'); return; }
+  if (!coupon.id || claimingId.value === coupon.id) return;
+  claimingId.value = coupon.id;
+  try {
+    const res: any = await couponSeckill(coupon.id);
+    const ok = res?.code === 200 || res?.success === true;
+    if (ok) {
+      ElMessage.success('领取成功！可在购物车结算时使用');
+      fetchGoodsCoupons(Number(route.params.id));
+    } else {
+      ElMessage.error(res?.msg || '领取失败');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '领取失败');
+  } finally {
+    claimingId.value = null;
+  }
+};
+
+type SkuOption = {
+  skuId: number;
+  label: string;
+  stock: number | null;
+  saleCount: number | null;
+  disabled: boolean;
+  priceValue: number | null;
+  raw: any;
+};
+
+const skuOptions = ref<SkuOption[]>([]);
+const selectedSkuId = ref<number | null>(null);
+const selectedSku = computed(() =>
+  skuOptions.value.find((s) => s.skuId === selectedSkuId.value) || null
+);
+
+const displayPriceText = computed(() => {
+  if (selectedSku.value?.priceValue != null) {
+    return formatMoney(selectedSku.value.priceValue);
+  }
+  return formatMoney(pickGoodsPriceValue(product.value));
+});
 
 const userInfo = computed(() => {
   const userStr = sessionStorage.getItem('user_user');
@@ -123,6 +231,27 @@ const fetchProduct = async () => {
     const ok = res?.code === 200 || res?.success === true;
     if (ok && res.data) {
       product.value = res.data;
+      const rawSkus = Array.isArray(res.data?.skus) ? res.data.skus : [];
+      skuOptions.value = rawSkus
+        .map((s: any) => {
+          const skuId = Number(s?.skuId ?? s?.id ?? s?.sku_id);
+          if (!Number.isFinite(skuId)) return null;
+          const attrs = parseSkuAttrs(s?.skuAttrs ?? s?.sku_attrs ?? s?.attrs);
+          const label =
+            skuAttrsToLabel(attrs) || (Number.isFinite(skuId) ? `SKU ${skuId}` : "SKU");
+          const stock = s?.stock != null ? Number(s.stock) : null;
+          const saleCount = s?.saleCount != null ? Number(s.saleCount) : null;
+          const priceValue = pickSkuPriceValue(s);
+          const disabled = stock != null ? stock <= 0 : false;
+          return { skuId, label, stock, saleCount, disabled, priceValue, raw: s } as SkuOption;
+        })
+        .filter((x: SkuOption | null): x is SkuOption => x != null);
+      if (skuOptions.value.length) {
+        const firstAvailable = skuOptions.value.find((s) => !s.disabled);
+        selectedSkuId.value = (firstAvailable ?? skuOptions.value[0])?.skuId ?? null;
+      } else {
+        selectedSkuId.value = null;
+      }
       
       // 检查收藏状态
       checkFavoriteStatus();
@@ -151,6 +280,7 @@ const fetchProduct = async () => {
       if (carouselRef.value) {
         carouselRef.value.setActiveItem(0);
       }
+      fetchGoodsCoupons(Number(id));
       fetchClickCount(Number(id));
       const mid =
         res.data?.merchantId ??
@@ -169,12 +299,6 @@ const fetchProduct = async () => {
     }
   } catch (e) {
     console.error("Fetch product detail failed", e);
-  }
-};
-
-const goToMerchant = () => {
-  if (merchantId.value) {
-    router.push(`/merchant/${merchantId.value}`);
   }
 };
 
@@ -203,6 +327,32 @@ const fetchClickCount = async (id: number) => {
     }
   } catch {}
   clickCount.value = 0;
+};
+
+const goToMerchant = () => {
+  if (merchantId.value) {
+    router.push(`/merchant/${merchantId.value}`);
+  }
+};
+
+const goChat = () => {
+  if (!userInfo.value) {
+    ElMessage.warning("请先登录");
+    router.push("/login");
+    return;
+  }
+  if (!merchantId.value || !product.value?.id) {
+    ElMessage.error("暂时无法发起客服会话，请稍后再试");
+    return;
+  }
+  router.push({
+    path: "/messages",
+    query: {
+      tab: "chat",
+      merchantId: String(merchantId.value),
+      goodsId: String(product.value.id),
+    },
+  });
 };
 
 const pickName = (u: any) =>
@@ -327,19 +477,18 @@ const addToCart = async () => {
     router.push("/login");
     return;
   }
-  if (!product.value?.id) return;
+  const skuId = selectedSkuId.value;
+  if (!skuId) {
+    ElMessage.warning("请选择规格");
+    return;
+  }
 
   try {
-    const res: any = await request.post("cart/add", null, {
-      params: {
-        userId: userInfo.value.id,
-        goodsId: product.value.id,
-        count: 1 // 默认添加1件
-      }
-    });
+    const res: any = await cartAdd(skuId, 1);
     
     if (res?.code === 200 || res?.success === true) {
       ElMessage.success("已加入购物车");
+      dispatchCartChanged();
     } else {
       ElMessage.error(res?.msg || "加入购物车失败");
     }
@@ -354,8 +503,9 @@ const handleBuy = () => {
     router.push("/login");
     return;
   }
-  // 这里可以跳转到订单确认页，或者直接触发购买逻辑
-  ElMessage.success("功能开发中，敬请期待");
+  addToCart().then(() => {
+    router.push("/cart");
+  });
 };
 
 const onCarouselChange = (idx: number) => {
@@ -504,5 +654,70 @@ watch(
 }
 .actions {
   margin-top: auto;
+}
+.sku-section {
+  margin: 8px 0 12px;
+}
+.sku-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sku-label {
+  color: #606266;
+  font-weight: 600;
+  line-height: 32px;
+}
+.sku-radio-group :deep(.el-radio-button__inner) {
+  border-radius: 16px;
+}
+.sku-meta {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 13px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sku-meta-item {
+  line-height: 1.4;
+}
+
+.coupon-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 12px;
+  flex-wrap: wrap;
+}
+
+.coupon-label {
+  color: #606266;
+  font-weight: 600;
+  line-height: 28px;
+  flex-shrink: 0;
+}
+
+.coupon-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coupon-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff0f0;
+  border: 1px dashed #ff6b6b;
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+.coupon-tag-text {
+  font-size: 12px;
+  color: #e1251b;
+  font-weight: 600;
 }
 </style>

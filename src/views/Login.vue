@@ -138,7 +138,7 @@
 <script setup lang="ts" name="Login">
 import { reactive, ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { User, Lock, Platform, Key } from "@element-plus/icons-vue";
+import { User, Lock, Platform } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 import request from "@/utils/request";

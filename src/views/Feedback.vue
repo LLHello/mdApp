@@ -261,7 +261,6 @@ import 'emoji-mart-vue-fast/css/emoji-mart.css';
 import data from 'emoji-mart-vue-fast/data/all.json';
 
 const emojiIndex = new EmojiIndex(data);
-const contentInputRef = ref();
 
 const addEmoji = (emoji: any) => {
   form.value.content += emoji.native;
@@ -306,10 +305,10 @@ const userInfo = computed(() => {
   return userStr ? JSON.parse(userStr) : null;
 });
 
-const handleFileChange = (file: any, files: any[]) => {
+const handleFileChange = (_file: any, files: any[]) => {
   fileList.value = files;
 };
-const handleFileRemove = (file: any, files: any[]) => {
+const handleFileRemove = (_file: any, files: any[]) => {
   fileList.value = files;
 };
 

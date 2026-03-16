@@ -12,7 +12,7 @@
             <el-timeline-item
               v-for="n in noticeList"
               :key="n.id"
-              :timestamp="formatTime(n.createTime || n.time)"
+              :timestamp="formatNoticeTime(n.createTime || n.time)"
               type="primary"
             >
               <div class="notice" :class="{ unread: !n.read }">
@@ -23,7 +23,11 @@
           </el-timeline>
         </el-tab-pane>
         <el-tab-pane label="聊天" name="chat">
-          <el-empty description="聊天功能筹备中" />
+          <ChatCenter
+            storage-prefix="user"
+            :initial-peer-id="initialPeerId"
+            :initial-goods-id="initialGoodsId"
+          />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -32,10 +36,15 @@
 
 <script setup lang="ts" name="Messages">
 import { ref, onMounted } from "vue";
+import { useRoute } from "vue-router";
 import { listNotices, markAllRead, syncNotices } from "@/utils/notice";
+import ChatCenter from "@/components/ChatCenter.vue";
+
+const route = useRoute();
 
 const active = ref("notice");
 const noticeList = ref<any[]>([]);
+
 const getUid = () => {
   try {
     const raw = sessionStorage.getItem("user_user");
@@ -45,12 +54,14 @@ const getUid = () => {
     return null;
   }
 };
+
 const load = () => {
   const uid = getUid();
   if (uid != null) {
     noticeList.value = listNotices("user", uid);
   }
 };
+
 const onRefresh = async () => {
   const uid = getUid();
   if (uid != null) {
@@ -58,6 +69,7 @@ const onRefresh = async () => {
     noticeList.value = list;
   }
 };
+
 const markAll = () => {
   const uid = getUid();
   if (uid != null) {
@@ -65,14 +77,38 @@ const markAll = () => {
     load();
   }
 };
-const formatTime = (t: number) => {
-  const d = new Date(t);
-  const s = d.toLocaleString();
-  return s;
+
+const formatNoticeTime = (t: number) => new Date(t).toLocaleString();
+
+// 从路由参数初始化聊天目标
+const initialPeerId = ref<number | null>(null);
+const initialGoodsId = ref<number | null>(null);
+
+const initFromRoute = () => {
+  const tab = route.query.tab as string | undefined;
+  if (tab === "chat") {
+    active.value = "chat";
+  }
+  const merchantIdStr = route.query.merchantId as string | undefined;
+  const goodsIdStr = route.query.goodsId as string | undefined;
+  if (merchantIdStr) {
+    const mid = Number(merchantIdStr);
+    if (Number.isFinite(mid) && mid > 0) {
+      initialPeerId.value = mid;
+    }
+  }
+  if (goodsIdStr) {
+    const gid = Number(goodsIdStr);
+    if (Number.isFinite(gid) && gid > 0) {
+      initialGoodsId.value = gid;
+    }
+  }
 };
+
 onMounted(() => {
   load();
   onRefresh();
+  initFromRoute();
 });
 </script>
 
@@ -91,9 +127,5 @@ onMounted(() => {
 .title {
   color: #303133;
   margin-bottom: 6px;
-}
-.content {
-  color: #606266;
-  white-space: pre-wrap;
 }
 </style>
